@@ -36,8 +36,8 @@ def save_maps(
     fov_x, fov_y = utils3d.numpy.intrinsics_to_fov(intrinsics)
     with open(save_path / 'fov.json', 'w') as f:
         json.dump({
-            'fov_x': round(np.rad2deg(fov_x), 2),
-            'fov_y': round(np.rad2deg(fov_y), 2),
+            'fov_x': round(float(np.rad2deg(fov_x)), 2),
+            'fov_y': round(float(np.rad2deg(fov_y)), 2),
         }, f)
 
 def save_glb(
