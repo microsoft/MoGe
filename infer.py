@@ -30,9 +30,9 @@ def save_maps(
 ):
     cv2.imwrite(str(save_path / 'image.jpg'), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
     cv2.imwrite(str(save_path / 'depth.png'), cv2.cvtColor(colorize_depth(depth), cv2.COLOR_RGB2BGR))
-    cv2.imwrite(str(save_path / 'depth.exr'), depth)
+    cv2.imwrite(str(save_path / 'depth.exr'), depth, [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_FLOAT])
     cv2.imwrite(str(save_path / 'mask.png'), (mask * 255).astype(np.uint8))
-    cv2.imwrite(str(save_path / 'points.exr'), cv2.cvtColor(points, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_HALF])
+    cv2.imwrite(str(save_path / 'points.exr'), cv2.cvtColor(points, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_FLOAT])
     fov_x, fov_y = utils3d.numpy.intrinsics_to_fov(intrinsics)
     with open(save_path / 'fov.json', 'w') as f:
         json.dump({
