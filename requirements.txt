@@ -4,3 +4,4 @@ scipy
 matplotlib
 trimesh
 pillow
+huggingface_hub

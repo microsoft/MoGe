@@ -116,10 +116,10 @@ def main(
 
     for image_path in (pbar := tqdm(image_paths, desc='Inference', disable=len(image_paths) <= 1)):
         image = cv2.cvtColor(cv2.imread(str(image_path)), cv2.COLOR_BGR2RGB)
+        height, width = image.shape[:2]
         if resize_to is not None:
             height, width = min(resize_to, int(resize_to * height / width)), min(resize_to, int(resize_to * width / height))
             image = cv2.resize(image, (width, height), cv2.INTER_AREA)
-        height, width = image.shape[:2]
         image_tensor = torch.tensor(image / 255, dtype=torch.float32, device=device).permute(2, 0, 1)
 
         # Inference
