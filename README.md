@@ -27,7 +27,7 @@ MoGe is a powerful model for recovering 3D geometry from monocular open-domain i
 - [ ] Release ViT-Base and ViT-Giant models.
 - [ ] Release evaluation and training code.
 
-*NOTE: The paper, code and model of MoGe are under active development. We will keep working on improving it!*
+*NOTE: The paper, code and model of MoGe are under active development. We will keep improving it!*
 
 ## Usage
 
