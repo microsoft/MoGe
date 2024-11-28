@@ -27,7 +27,9 @@ MoGe is a powerful model for recovering 3D geometry from monocular open-domain i
 - [ ] Release ViT-Base and ViT-Giant models.
 - [ ] Release evaluation and training code.
 
-*NOTE: The paper, code and model of MoGe are under active development. We will keep improving it!*
+🌟*Updated on 2024/11/28* - [CHANGELOG](CHANGELOG.md): 
+  * Supported user-provided camera FOV. 
+  * Added the script for panorama images [scripts/infer_panorama.py](scripts/infer_panorama.py).
 
 ## Usage
 
@@ -40,13 +42,13 @@ MoGe is a powerful model for recovering 3D geometry from monocular open-domain i
     cd MoGe
     ```
 
-- Make sure that `pytorch` and `torchvision` are installed. Then install the rest of the requirements. 
-    
+- Python (>= 3.10) environment:
+  - torch (>= 2.0) and torchvision (compatible with the torch version).
+  - other requirements
     ```bash
     pip install -r requirements.txt
     ```
-    
-    It should be very easy to install these requirements. Please check the `requirements.txt` for more details if you have concerns.
+    MoGe should be compatible with most requirements versions. Please check the `requirements.txt` for more details if you have concerns.
 
 ### Pretrained model
 
@@ -83,30 +85,33 @@ output = model.infer(input_image)
 #     "mask": (H, W),         # a binary mask for valid pixels. 
 #     "intrinsics": (3, 3),   # normalized camera intrinsics
 # }
+# For more usage details, see the `MoGeModel.infer` docstring.
 ```
 
 ### Web demo
 
-The web demo is also available at our [Hugging Face space](https://huggingface.co/spaces/Ruicheng/MoGe). If you would like to host one locally, make sure that `gradio` is installed and then run the following command:
+Make sure that `gradio` is installed and then run the following command to start the web demo:
  
 ```bash
-python app.py   # --share for Gradio public sharing
+python scripts/app.py   # --share for Gradio public sharing
 ```
 
+The web demo is also available at our [Hugging Face space](https://huggingface.co/spaces/Ruicheng/MoGe).
 
-### The `infer.py` script
 
-Run the script `infer.py` for more functionalities.
+### Using `scripts/infer.py`
+
+Run the script `scripts/infer.py` via the following command:
 
 ```bash
 # Save the output [maps], [glb] and [ply] files
-python infer.py --input IMAGES_FOLDER_OR_IMAGE_PATH --output OUTPUT_FOLDER --maps --glb --ply
+python scripts/infer.py --input IMAGES_FOLDER_OR_IMAGE_PATH --output OUTPUT_FOLDER --maps --glb --ply
 
 # Show the result in a window (requires pyglet < 2.0, e.g. pip install pyglet==1.5.29)
-python infer.py --input IMAGES_FOLDER_OR_IMAGE_PATH --output OUTPUT_FOLDER --show
+python scripts/infer.py --input IMAGES_FOLDER_OR_IMAGE_PATH --output OUTPUT_FOLDER --show
 ```
 
-For detailed options, run `python infer.py --help`.
+For detailed options, run `python scripts/infer.py --help`:
 
 ```
 Usage: infer.py [OPTIONS]
@@ -116,6 +121,9 @@ Usage: infer.py [OPTIONS]
 Options:
   --input PATH                Input image or folder path. "jpg" and "png" are
                               supported.
+  --fov_x FLOAT               If camera parameters are known, set the
+                              horizontal field of view in degrees. Otherwise,
+                              MoGe will estimate it.
   --output PATH               Output folder path
   --pretrained TEXT           Pretrained model name or path. Default is
                               "Ruicheng/moge-vitl"
@@ -127,7 +135,7 @@ Options:
                               inference. The higher, the better but slower.
                               Default is 9. Note that it is irrelevant to the
                               output resolution.
-  --threshold FLOAT           Threshold for removing edges. Default is 0.02.
+  --threshold FLOAT           Threshold for removing edges. Default is 0.03.
                               Smaller value removes more edges. "inf" means no
                               thresholding.
   --maps                      Whether to save the output maps and fov(image,
@@ -142,6 +150,14 @@ Options:
   --help                      Show this message and exit.
 ```
 
+### Using `scripts/infer_panorama.py` for 360-degree panorama images
+
+> *NOTE: This is an experimental extension of MoGe.*
+
+The script will split the 360-degree panorama image into multiple perspective views and infer on each view separately. 
+The output maps will be combined to produce a panorama depth map and point map. 
+
+Note that the panorama image must have spherical parameterization (e.g., environment maps or equirectangular images). Other formats must be converted to spherical format before using this script. Run `python scripts/infer_panorama.py --help` for detailed options.
 
 ## License
 

@@ -23,7 +23,7 @@ def harmonic_mean_numpy(x: np.ndarray, w: np.ndarray = None, axis: Union[int, Tu
         return 1 / (weighted_mean_numpy(1 / (x + eps), w, axis=axis, keepdims=keepdims, eps=eps) + eps)
 
 
-def image_plane_uv_numpy(width: int, height: int, aspect_ratio: float = None, dtype: np.dtype = np.float32) -> np.ndarray:
+def normalized_view_plane_uv_numpy(width: int, height: int, aspect_ratio: float = None, dtype: np.dtype = np.float32) -> np.ndarray:
     "UV with left-top corner as (-width / diagonal, -height / diagonal) and right-bottom corner as (width / diagonal, height / diagonal)"
     if aspect_ratio is None:
         aspect_ratio = width / height
@@ -55,7 +55,7 @@ def intrinsics_to_fov_numpy(intrinsics: np.ndarray) -> Tuple[np.ndarray, np.ndar
 def point_map_to_depth_legacy_numpy(points: np.ndarray):
     height, width = points.shape[-3:-1]
     diagonal = (height ** 2 + width ** 2) ** 0.5
-    uv = image_plane_uv_numpy(width, height, dtype=points.dtype)  # (H, W, 2)
+    uv = normalized_view_plane_uv_numpy(width, height, dtype=points.dtype)  # (H, W, 2)
     _, uv = np.broadcast_arrays(points[..., :2], uv)
 
     # Solve least squares problem
@@ -72,7 +72,7 @@ def point_map_to_depth_legacy_numpy(points: np.ndarray):
     return depth, fov_x, fov_y, shift
 
 
-def solve_optimal_shift_focal(uv: np.ndarray, xyz: np.ndarray, ransac_iters: int = None, ransac_hypothetical_size: float = 0.1, ransac_threshold: float = 0.1):
+def solve_optimal_focal_shift(uv: np.ndarray, xyz: np.ndarray):
     "Solve `min |focal * xy / (z + shift) - uv|` with respect to shift and focal"
     from scipy.optimize import least_squares
     uv, xy, z = uv.reshape(-1, 2), xyz[..., :2].reshape(-1, 2), xyz[..., 2].reshape(-1)
@@ -83,44 +83,39 @@ def solve_optimal_shift_focal(uv: np.ndarray, xyz: np.ndarray, ransac_iters: int
         err = (f * xy_proj - uv).ravel()
         return err
 
-    initial_shift = 0 #-z.min(keepdims=True) + 1.0
-
-    if ransac_iters is None:
-        solution = least_squares(partial(fn, uv, xy, z), x0=initial_shift, ftol=1e-3, method='lm')
-        optim_shift = solution['x'].squeeze().astype(np.float32)
-    else:
-        best_err, best_shift = np.inf, None
-        for _ in range(ransac_iters):
-            maybe_inliers = np.random.choice(len(z), size=int(ransac_hypothetical_size * len(z)), replace=False)
-            solution = least_squares(partial(fn, uv[maybe_inliers], xy[maybe_inliers], z[maybe_inliers]), x0=initial_shift, ftol=1e-3, method='lm')
-            maybe_shift = solution['x'].squeeze().astype(np.float32)
-            confirmed_inliers = np.linalg.norm(fn(uv, xy, z, maybe_shift).reshape(-1, 2), axis=-1) < ransac_threshold
-            if confirmed_inliers.sum() > 10:
-                solution = least_squares(partial(fn, uv[confirmed_inliers], xy[confirmed_inliers], z[confirmed_inliers]), x0=maybe_shift, ftol=1e-3, method='lm')
-                better_shift = solution['x'].squeeze().astype(np.float32)
-            else:
-                better_shift = maybe_shift
-            err = np.linalg.norm(fn(uv, xy, z, better_shift).reshape(-1, 2), axis=-1).clip(max=ransac_threshold).mean()
-            if err < best_err:
-                best_err, best_shift = err, better_shift
-                initial_shift = best_shift
-            
-        optim_shift = best_shift
+    solution = least_squares(partial(fn, uv, xy, z), x0=0, ftol=1e-3, method='lm')
+    optim_shift = solution['x'].squeeze().astype(np.float32)
 
     xy_proj = xy / (z + optim_shift)[: , None]
-    optim_focal = (xy_proj * uv).sum() / (xy_proj * xy_proj).sum()
+    optim_focal = (xy_proj * uv).sum() / np.square(xy_proj).sum()
 
     return optim_shift, optim_focal
 
 
-def point_map_to_depth_numpy(points: np.ndarray, mask: np.ndarray = None, downsample_size: Tuple[int, int] = (64, 64)):
+def solve_optimal_shift(uv: np.ndarray, xyz: np.ndarray, focal: float):
+    "Solve `min |focal * xy / (z + shift) - uv|` with respect to shift"
+    from scipy.optimize import least_squares
+    uv, xy, z = uv.reshape(-1, 2), xyz[..., :2].reshape(-1, 2), xyz[..., 2].reshape(-1)
+
+    def fn(uv: np.ndarray, xy: np.ndarray, z: np.ndarray, shift: np.ndarray):
+        xy_proj = xy/ (z + shift)[: , None]
+        err = (focal * xy_proj - uv).ravel()
+        return err
+
+    solution = least_squares(partial(fn, uv, xy, z), x0=0, ftol=1e-3, method='lm')
+    optim_shift = solution['x'].squeeze().astype(np.float32)
+
+    return optim_shift
+
+
+def recover_focal_shift_numpy(points: np.ndarray, mask: np.ndarray = None, focal: float = None, downsample_size: Tuple[int, int] = (64, 64)):
     import cv2
     assert points.shape[-1] == 3, "Points should (H, W, 3)"
 
     height, width = points.shape[-3], points.shape[-2]
     diagonal = (height ** 2 + width ** 2) ** 0.5
 
-    uv = image_plane_uv_numpy(width=width, height=height)
+    uv = normalized_view_plane_uv_numpy(width=width, height=height)
     
     if mask is None:
         points_lr = cv2.resize(points, downsample_size, interpolation=cv2.INTER_LINEAR).reshape(-1, 3)
@@ -132,13 +127,12 @@ def point_map_to_depth_numpy(points: np.ndarray, mask: np.ndarray = None, downsa
     if points_lr.size == 0:
         return np.zeros((height, width)), 0, 0, 0
     
-    optim_shift, optim_focal = solve_optimal_shift_focal(uv_lr, points_lr, ransac_iters=None)
+    if focal is None:
+        focal, shift = solve_optimal_focal_shift(uv_lr, points_lr)
+    else:
+        shift = solve_optimal_shift(uv_lr, points_lr, focal)
 
-    fov_x = 2 * np.arctan(width / diagonal / optim_focal)
-    fov_y = 2 * np.arctan(height / diagonal / optim_focal)
-    
-    depth = points[:, :, 2] + optim_shift
-    return depth, fov_x, fov_y, optim_shift
+    return focal, shift
 
 
 def mask_aware_nearest_resize_numpy(mask: np.ndarray, target_width: int, target_height: int) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:

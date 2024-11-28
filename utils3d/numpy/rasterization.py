@@ -460,10 +460,8 @@ def test():
         faces, 
         attr, 
         512, 512, 
-        view=view, 
-        projection=perspective, 
+        transform=perspective @ view, 
         cull_backface=True,
-        ssaa=1,
         return_depth=True,
     )   
     import cv2

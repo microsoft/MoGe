@@ -1,6 +1,8 @@
 import os
-import time
+import sys
 from pathlib import Path
+sys.path.append(str(Path(__file__).absolute().parents[1]))
+import time
 import uuid
 import tempfile
 from typing import Union
@@ -50,12 +52,13 @@ def run(image: np.ndarray, remove_edge: bool = True, max_size: int = 800):
     image_tensor = torch.tensor(image, dtype=torch.float32, device=torch.device('cuda')).permute(2, 0, 1) / 255
     output = model.infer(image_tensor, resolution_level=9, apply_mask=True)
     points, depth, mask = output['points'].cpu().numpy(), output['depth'].cpu().numpy(), output['mask'].cpu().numpy()
+    normals, normals_mask = utils3d.numpy.points_to_normals(points, mask=mask)
 
     faces, vertices, vertex_colors, vertex_uvs = utils3d.numpy.image_mesh(
         points,
         image.astype(np.float32) / 255,
         utils3d.numpy.image_uv(width=width, height=height),
-        mask=mask & ~utils3d.numpy.depth_edge(depth, mask=mask, rtol=0.02) if remove_edge else mask,
+        mask=mask & ~(utils3d.numpy.depth_edge(depth, rtol=0.03, mask=mask) & utils3d.numpy.normals_edge(normals, tol=5, mask=normals_mask)),
         tri=True
     )
     vertices, vertex_uvs = vertices * [1, -1, -1], vertex_uvs * [1, -1] + [0, 1]

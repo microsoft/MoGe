@@ -1,6 +1,8 @@
 import numpy as np
 from typing import *
 from numbers import Number
+import warnings
+import functools
 
 from ._helpers import batched
 from . import transforms
@@ -14,6 +16,7 @@ __all__ = [
     'max_pool_2d',
     'max_pool_nd',
     'depth_edge',
+    'normals_edge',
     'depth_aliasing',
     'interpolate',
     'image_scrcoord',
@@ -22,14 +25,27 @@ __all__ = [
     'image_pixel',
     'image_mesh',
     'image_mesh_from_depth',
-    'depth_to_normal',
-    'point_to_normal',
+    'points_to_normals',
+    'points_to_normals',
     'chessboard',
     'cube',
+    'icosahedron',
     'square',
     'camera_frustum',
     'to4x4'
 ]
+
+
+def no_runtime_warnings(fn):
+    """
+    Disable runtime warnings in numpy.
+    """
+    @functools.wraps(fn)
+    def wrapper(*args, **kwargs):
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            return fn(*args, **kwargs)
+    return wrapper
 
 
 def sliding_window_1d(x: np.ndarray, window_size: int, stride: int, axis: int = -1):
@@ -97,9 +113,10 @@ def max_pool_2d(x: np.ndarray, kernel_size: Union[int, Tuple[int, int]], stride:
     return max_pool_nd(x, kernel_size, stride, padding, axis)
 
 
+@no_runtime_warnings
 def depth_edge(depth: np.ndarray, atol: float = None, rtol: float = None, kernel_size: int = 3, mask: np.ndarray = None) -> np.ndarray:
     """
-    Compute the edge mask of x depth map. The edge is defined as the pixels whose neighbors have x large difference in depth.
+    Compute the edge mask from depth map. The edge is defined as the pixels whose neighbors have large difference in depth.
     
     Args:
         depth (np.ndarray): shape (..., height, width), linear depth map
@@ -117,11 +134,15 @@ def depth_edge(depth: np.ndarray, atol: float = None, rtol: float = None, kernel
     edge = np.zeros_like(depth, dtype=bool)
     if atol is not None:
         edge |= diff > atol
-    if rtol is not None:
-        edge |= diff / depth > rtol
+    
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", category=RuntimeWarning)
+        if rtol is not None:
+            edge |= diff / depth > rtol
     return edge
 
 
+@no_runtime_warnings
 def depth_aliasing(depth: np.ndarray, atol: float = None, rtol: float = None, kernel_size: int = 3, mask: np.ndarray = None) -> np.ndarray:
     """
     Compute the map that indicates the aliasing of x depth map. The aliasing is defined as the pixels which neither close to the maximum nor the minimum of its neighbors.
@@ -148,7 +169,46 @@ def depth_aliasing(depth: np.ndarray, atol: float = None, rtol: float = None, ke
         edge |= diff / depth > rtol
     return edge
 
-def point_to_normal(point: np.ndarray, mask: np.ndarray = None) -> np.ndarray:
+
+@no_runtime_warnings
+def normals_edge(normals: np.ndarray, tol: float, kernel_size: int = 3, mask: np.ndarray = None) -> np.ndarray:
+    """
+    Compute the edge mask from normal map.
+
+    Args:
+        normal (np.ndarray): shape (..., height, width, 3), normal map
+        tol (float): tolerance in degrees
+   
+    Returns:
+        edge (np.ndarray): shape (..., height, width) of dtype torch.bool
+    """
+    assert normals.ndim >= 3 and normals.shape[-1] == 3, "normal should be of shape (..., height, width, 3)"
+    normals = normals / (np.linalg.norm(normals, axis=-1, keepdims=True) + 1e-12)
+    
+    padding = kernel_size // 2
+    normals_window = sliding_window_2d(
+        np.pad(normals, (*([(0, 0)] * (normals.ndim - 3)), (padding, padding), (padding, padding), (0, 0)), mode='edge'), 
+        window_size=kernel_size, 
+        stride=1, 
+        axis=(-3, -2)
+    )
+    if mask is None:
+        angle_diff = np.acos((normals[..., None, None] * normals_window).sum(axis=-3)).max(axis=(-2, -1))
+    else:
+        mask_window = sliding_window_2d(
+            np.pad(mask, (*([(0, 0)] * (mask.ndim - 3)), (padding, padding), (padding, padding)), mode='edge'), 
+            window_size=kernel_size, 
+            stride=1, 
+            axis=(-3, -2)
+        )
+        angle_diff = np.where(mask_window, np.acos((normals[..., None, None] * normals_window).sum(axis=-3)), 0).max(axis=(-2, -1))
+
+    angle_diff = max_pool_2d(angle_diff, kernel_size, stride=1, padding=kernel_size // 2)
+    edge = angle_diff > np.deg2rad(tol)
+    return edge
+
+@no_runtime_warnings
+def points_to_normals(point: np.ndarray, mask: np.ndarray = None) -> np.ndarray:
     """
     Calculate normal map from point map. Value range is [-1, 1]. Normal direction in OpenGL identity camera's coordinate system.
 
@@ -189,12 +249,14 @@ def point_to_normal(point: np.ndarray, mask: np.ndarray = None) -> np.ndarray:
     normal = normal / (np.linalg.norm(normal, axis=-1, keepdims=True) + 1e-12)
     
     if has_mask:
-        return normal, valid.any(axis=0)
+        normal_mask =  valid.any(axis=0)
+        normal = np.where(normal_mask[..., None], normal, 0)
+        return normal, normal_mask
     else:
         return normal
 
 
-def depth_to_normal(depth: np.ndarray, intrinsics: np.ndarray, mask: np.ndarray = None) -> np.ndarray:
+def depth_to_normals(depth: np.ndarray, intrinsics: np.ndarray, mask: np.ndarray = None) -> np.ndarray:
     """
     Calculate normal map from depth map. Value range is [-1, 1]. Normal direction in OpenGL identity camera's coordinate system.
 
@@ -213,7 +275,7 @@ def depth_to_normal(depth: np.ndarray, intrinsics: np.ndarray, mask: np.ndarray 
     uv = image_uv(width=width, height=height, dtype=np.float32)
     pts = transforms.unproject_cv(uv, depth, intrinsics=intrinsics, extrinsics=None)
     
-    return point_to_normal(pts, mask)
+    return points_to_normals(pts, mask)
 
 def interpolate(bary: np.ndarray, tri_id: np.ndarray, attr: np.ndarray, faces: np.ndarray) -> np.ndarray:
     """Interpolate with given barycentric coordinates and triangle indices
@@ -368,7 +430,7 @@ def image_mesh(
     return_indices: bool = False
 ) -> Tuple[np.ndarray, ...]:
     """
-    Get x quad mesh regarding image pixel uv coordinates as vertices and image grid as faces.
+    Get a mesh regarding image pixel uv coordinates as vertices and image grid as faces.
 
     Args:
         *image_attrs (np.ndarray): image attributes in shape (height, width, [channels])
@@ -560,3 +622,18 @@ def camera_frustum(extrinsics: np.ndarray, intrinsics: np.ndarray, depth: float 
     ], dtype=np.int32)
     return vertices, edges, faces
 
+
+def icosahedron():
+    A = (1 + 5 ** 0.5) / 2
+    vertices = np.array([
+        [0, 1, A], [0, -1, A], [0, 1, -A], [0, -1, -A],
+        [1, A, 0], [-1, A, 0], [1, -A, 0], [-1, -A, 0],
+        [A, 0, 1], [A, 0, -1], [-A, 0, 1], [-A, 0, -1]
+    ], dtype=np.float32)
+    faces = np.array([
+        [0, 1, 8], [0, 8, 4], [0, 4, 5], [0, 5, 10], [0, 10, 1],
+        [3, 2, 9], [3, 9, 6], [3, 6, 7], [3, 7, 11], [3, 11, 2],
+        [1, 6, 8], [8, 9, 4], [4, 2, 5], [5, 11, 10], [10, 7, 1],
+        [2, 4, 9], [9, 8, 6], [6, 1, 7], [7, 10, 11], [11, 5, 2]
+    ], dtype=np.int32)
+    return vertices, faces

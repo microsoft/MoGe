@@ -15,7 +15,7 @@ import torch.version
 import utils3d
 from huggingface_hub import hf_hub_download
 
-from ..utils.geometry_torch import image_plane_uv, point_map_to_depth, gaussian_blur_2d
+from ..utils.geometry_torch import normalized_view_plane_uv, recover_focal_shift, gaussian_blur_2d
 from .utils import wrap_dinov2_attention_with_sdpa, wrap_module_with_gradient_checkpointing, unwrap_module_with_gradient_checkpointing
 from ..utils.tools import timeit
 
@@ -121,7 +121,7 @@ class Head(nn.Module):
         # (patch_h, patch_w) -> (patch_h * 2, patch_w * 2) -> (patch_h * 4, patch_w * 4) -> (patch_h * 8, patch_w * 8)
         for i, block in enumerate(self.upsample_blocks):
             # UV coordinates is for awareness of image aspect ratio
-            uv = image_plane_uv(width=x.shape[-1], height=x.shape[-2], aspect_ratio=img_w / img_h, dtype=x.dtype, device=x.device)
+            uv = normalized_view_plane_uv(width=x.shape[-1], height=x.shape[-2], aspect_ratio=img_w / img_h, dtype=x.dtype, device=x.device)
             uv = uv.permute(2, 0, 1).unsqueeze(0).expand(x.shape[0], -1, -1, -1)
             x = torch.cat([x, uv], dim=1)
             for layer in block:
@@ -129,7 +129,7 @@ class Head(nn.Module):
         
         # (patch_h * 8, patch_w * 8) -> (img_h, img_w)
         x = F.interpolate(x, (img_h, img_w), mode="bilinear", align_corners=False)
-        uv = image_plane_uv(width=x.shape[-1], height=x.shape[-2], aspect_ratio=img_w / img_h, dtype=x.dtype, device=x.device)
+        uv = normalized_view_plane_uv(width=x.shape[-1], height=x.shape[-2], aspect_ratio=img_w / img_h, dtype=x.dtype, device=x.device)
         uv = uv.permute(2, 0, 1).unsqueeze(0).expand(x.shape[0], -1, -1, -1)
         x = torch.cat([x, uv], dim=1)
 
@@ -301,6 +301,7 @@ class MoGeModel(nn.Module):
         force_projection: bool = True,
         resolution_level: int = 9,
         apply_mask: bool = True,
+        fov_x: Union[Number, torch.Tensor] = None
     ) -> Dict[str, torch.Tensor]:
         """
         User-friendly inference function
@@ -308,7 +309,9 @@ class MoGeModel(nn.Module):
         ### Parameters
         - `image`: input image tensor of shape (B, 3, H, W) or (3, H, W)
         - `resolution_level`: the resolution level to use for the output point map in 0-9. Default: 9 (highest)
-        - `interpolation_mode`: interpolation mode for the output points map. Default: 'bilinear'.
+        - `force_projection`: if True, the output point map will be computed using the actual depth map. Default: True
+        - `apply_mask`: if True, the output point map will be masked using the predicted mask. Default: True
+        - `fov_x`: the horizontal camera FoV in degrees. If None, it will be inferred from the predicted point map. Default: None
             
         ### Returns
 
@@ -325,6 +328,7 @@ class MoGeModel(nn.Module):
 
         original_height, original_width = image.shape[-2:]
         area = original_height * original_width
+        aspect_ratio = original_width / original_height
 
         min_area, max_area = self.trained_area_range
         expected_area = min_area + (max_area - min_area) * (resolution_level / 9)
@@ -336,15 +340,24 @@ class MoGeModel(nn.Module):
         output = self.forward(image)
         points, mask = output['points'], output.get('mask', None)
 
-        # Get camera-origin-centered point map
-        depth, fov_x, fov_y, z_shift = point_map_to_depth(points, None if mask is None else mask > 0.5)
-        intrinsics = utils3d.torch.intrinsics_from_fov_xy(fov_x, fov_y)
+        # Get camera-space point map. (Focal here is the focal length relative to half the image diagonal)
+        if fov_x is None:
+            focal, shift = recover_focal_shift(points, None if mask is None else mask > 0.5)
+        else:
+            focal = aspect_ratio / (1 + aspect_ratio ** 2) ** 0.5 / torch.tan(torch.deg2rad(torch.as_tensor(fov_x, device=points.device, dtype=points.dtype) / 2))
+            if focal.ndim == 0:
+                focal = focal[None].expand(points.shape[0])
+            _, shift = recover_focal_shift(points, None if mask is None else mask > 0.5, focal=focal)
+        fx = focal / 2 * (1 + aspect_ratio ** 2) ** 0.5 / aspect_ratio
+        fy = focal / 2 * (1 + aspect_ratio ** 2) ** 0.5 
+        intrinsics = utils3d.torch.intrinsics_from_focal_center(fx, fy, 0.5, 0.5)
+        depth = points[..., 2] + shift[..., None, None]
         
-        # If projection constraint is forces, recompute the point map using the actual depth map
+        # If projection constraint is forced, recompute the point map using the actual depth map
         if force_projection:
             points = utils3d.torch.unproject_cv(utils3d.torch.image_uv(width=expected_width, height=expected_height, dtype=points.dtype, device=points.device), depth, extrinsics=None, intrinsics=intrinsics[..., None, :, :])
         else:
-            points = points + torch.stack([torch.zeros_like(z_shift), torch.zeros_like(z_shift), z_shift], dim=-1)[..., None, None, :]
+            points = points + torch.stack([torch.zeros_like(shift), torch.zeros_like(shift), shift], dim=-1)[..., None, None, :]
 
         # Resize the output to the original resolution
         if expected_area != area:

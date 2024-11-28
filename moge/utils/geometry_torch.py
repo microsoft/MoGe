@@ -10,7 +10,7 @@ import torch.types
 import utils3d
 
 from .tools import timeit
-from .geometry_numpy import solve_optimal_shift_focal
+from .geometry_numpy import solve_optimal_focal_shift, solve_optimal_shift
 
 
 def weighted_mean(x: torch.Tensor, w: torch.Tensor = None, dim: Union[int, torch.Size] = None, keepdim: bool = False, eps: float = 1e-7) -> torch.Tensor:
@@ -37,7 +37,7 @@ def geometric_mean(x: torch.Tensor, w: torch.Tensor = None, dim: Union[int, torc
         return weighted_mean(x.add(eps).log(), w, dim=dim, keepdim=keepdim, eps=eps).exp()
 
 
-def image_plane_uv(width: int, height: int, aspect_ratio: float = None, dtype: torch.dtype = None, device: torch.device = None) -> torch.Tensor:
+def normalized_view_plane_uv(width: int, height: int, aspect_ratio: float = None, dtype: torch.dtype = None, device: torch.device = None) -> torch.Tensor:
     "UV with left-top corner as (-width / diagonal, -height / diagonal) and right-bottom corner as (width / diagonal, height / diagonal)"
     if aspect_ratio is None:
         aspect_ratio = width / height
@@ -87,7 +87,7 @@ def intrinsics_to_fov(intrinsics: torch.Tensor):
 def point_map_to_depth_legacy(points: torch.Tensor):
     height, width = points.shape[-3:-1]
     diagonal = (height ** 2 + width ** 2) ** 0.5
-    uv = image_plane_uv(width, height, dtype=points.dtype, device=points.device)  # (H, W, 2)
+    uv = normalized_view_plane_uv(width, height, dtype=points.dtype, device=points.device)  # (H, W, 2)
 
     # Solve least squares problem
     b = (uv * points[..., 2:]).flatten(-3, -1)                        # (..., H * W * 2)
@@ -103,7 +103,13 @@ def point_map_to_depth_legacy(points: torch.Tensor):
     return depth, fov_x, fov_y, shift
 
 
-def point_map_to_depth(points: torch.Tensor, mask: torch.Tensor = None, downsample_size: Tuple[int, int] = (64, 64)):
+def view_plane_uv_to_focal(uv: torch.Tensor):
+    normed_uv = normalized_view_plane_uv(width=uv.shape[-2], height=uv.shape[-3], device=uv.device, dtype=uv.dtype)
+    focal = (uv * normed_uv).sum() / uv.square().sum().add(1e-12)
+    return focal
+
+
+def recover_focal_shift(points: torch.Tensor, mask: torch.Tensor = None, focal: torch.Tensor = None, downsample_size: Tuple[int, int] = (64, 64)):
     """
     Recover the depth map and FoV from a point map with unknown z shift and focal.
 
@@ -114,13 +120,13 @@ def point_map_to_depth(points: torch.Tensor, mask: torch.Tensor = None, downsamp
 
     ### Parameters:
     - `points: torch.Tensor` of shape (..., H, W, 3)
+    - `mask: torch.Tensor` of shape (..., H, W). Optional.
+    - `focal: torch.Tensor` of shape (...). Optional.
     - `downsample_size: Tuple[int, int]` in (height, width), the size of the downsampled map. Downsampling produces approximate solution and is efficient for large maps.
 
     ### Returns:
-    - `depth: torch.Tensor` of shape (..., H, W)
-    - `fov_x: torch.Tensor` of shape (...)
-    - `fov_y: torch.Tensor` of shape (...)
-    - `shift: torch.Tensor` of shape (...), the z shift, making `depth = points[..., 2] + shift`
+    - `focal`: torch.Tensor of shape (...) the estimated focal length, relative to the half diagonal of the map
+    - `shift`: torch.Tensor of shape (...) Z-axis shift to translate the point map to camera space
     """
     shape = points.shape
     height, width = points.shape[-3], points.shape[-2]
@@ -128,7 +134,8 @@ def point_map_to_depth(points: torch.Tensor, mask: torch.Tensor = None, downsamp
 
     points = points.reshape(-1, *shape[-3:])
     mask = None if mask is None else mask.reshape(-1, *shape[-3:-1])
-    uv = image_plane_uv(width, height, dtype=points.dtype, device=points.device)  # (H, W, 2)
+    focal = focal.reshape(-1) if focal is not None else None
+    uv = normalized_view_plane_uv(width, height, dtype=points.dtype, device=points.device)  # (H, W, 2)
 
     points_lr = F.interpolate(points.permute(0, 3, 1, 2), downsample_size, mode='nearest').permute(0, 2, 3, 1)
     uv_lr = F.interpolate(uv.unsqueeze(0).permute(0, 3, 1, 2), downsample_size, mode='nearest').squeeze(0).permute(1, 2, 0)
@@ -136,26 +143,26 @@ def point_map_to_depth(points: torch.Tensor, mask: torch.Tensor = None, downsamp
     
     uv_lr_np = uv_lr.cpu().numpy()
     points_lr_np = points_lr.detach().cpu().numpy()
+    focal_np = focal.cpu().numpy() if focal is not None else None
     mask_lr_np = None if mask is None else mask_lr.cpu().numpy()
     optim_shift, optim_focal = [], []
     for i in range(points.shape[0]):
         points_lr_i_np = points_lr_np[i] if mask is None else points_lr_np[i][mask_lr_np[i]]
         uv_lr_i_np = uv_lr_np if mask is None else uv_lr_np[mask_lr_np[i]]
-        optim_shift_i, optim_focal_i = solve_optimal_shift_focal(uv_lr_i_np, points_lr_i_np, ransac_iters=None)
+        if focal is None:
+            optim_shift_i, optim_focal_i = solve_optimal_focal_shift(uv_lr_i_np, points_lr_i_np)
+            optim_focal.append(float(optim_focal_i))
+        else:
+            optim_shift_i = solve_optimal_shift(uv_lr_i_np, points_lr_i_np, focal_np[i])
         optim_shift.append(float(optim_shift_i))
-        optim_focal.append(float(optim_focal_i))
-    optim_shift = torch.tensor(optim_shift, device=points.device, dtype=points.dtype)
-    optim_focal = torch.tensor(optim_focal, device=points.device, dtype=points.dtype)
+    optim_shift = torch.tensor(optim_shift, device=points.device, dtype=points.dtype).reshape(shape[:-3])
 
-    fov_x = 2 * torch.atan(width / diagonal / optim_focal)
-    fov_y = 2 * torch.atan(height / diagonal / optim_focal)
-    
-    depth = (points[..., 2] + optim_shift[:, None, None]).reshape(shape[:-1])
-    fov_x = fov_x.reshape(shape[:-3])
-    fov_y = fov_y.reshape(shape[:-3])
-    optim_shift = optim_shift.reshape(shape[:-3])
+    if focal is None:
+        optim_focal = torch.tensor(optim_focal, device=points.device, dtype=points.dtype).reshape(shape[:-3])
+    else:
+        optim_focal = focal.reshape(shape[:-3])
 
-    return depth, fov_x, fov_y, optim_shift
+    return optim_focal, optim_shift
 
 
 def mask_aware_nearest_resize(mask: torch.BoolTensor, target_width: int, target_height: int) -> Tuple[torch.LongTensor, torch.LongTensor, torch.BoolTensor]:
@@ -210,5 +217,3 @@ def mask_aware_nearest_resize(mask: torch.BoolTensor, target_width: int, target_
     batch_indices = [torch.arange(n, device=device).reshape([1] * i + [n] + [1] * (mask.dim() - i - 1)) for i, n in enumerate(mask.shape[:-2])]
 
     return (*batch_indices, nearest_i, nearest_j), target_mask
-
-    

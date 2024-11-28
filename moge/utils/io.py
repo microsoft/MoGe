@@ -327,20 +327,65 @@ def read_rgbxyz(file: Union[IO, str, Path]) -> Tuple[np.ndarray, np.ndarray, np.
     is_archive = hasattr(file, 'read') or Path(file).suffix == '.zip'
     if is_archive:
         with zipfile.ZipFile(file, 'r') as z:
-            image = cv2.cvtColor(cv2.imdecode(np.frombuffer(z.read('image.jpg'), np.uint8), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
-            points = cv2.cvtColor(cv2.imdecode(np.frombuffer(z.read('points.exr'), np.uint8), cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB)
+            image = cv2.imdecode(np.frombuffer(z.read('image.jpg'), np.uint8), cv2.IMREAD_COLOR)
+            points = cv2.imdecode(np.frombuffer(z.read('points.exr'), np.uint8), cv2.IMREAD_UNCHANGED)
             if 'mask.png' in z.namelist():
-                mask = cv2.imdecode(np.frombuffer(z.read('mask.png'), np.uint8), cv2.IMREAD_GRAYSCALE) > 0
+                mask = cv2.imdecode(np.frombuffer(z.read('mask.png'), np.uint8), cv2.IMREAD_UNCHANGED) > 0
             else:
                 mask = np.ones(image.shape[:2], dtype=bool)
     else:
         file = Path(file)
         file.mkdir(parents=True, exist_ok=True)
-        image = cv2.cvtColor(cv2.imread(str(file / 'image.jpg'), cv2.IMREAD_COLOR), cv2.COLOR_BGR2RGB)
-        points = cv2.cvtColor(cv2.imread(str(file / 'points.exr'), cv2.IMREAD_UNCHANGED), cv2.COLOR_BGR2RGB)
+        image = cv2.imread(str(file / 'image.jpg'), cv2.IMREAD_COLOR)
+        image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        points = cv2.imread(str(file / 'points.exr'), cv2.IMREAD_UNCHANGED)
         if (file /'mask.png').exists():
-            mask = cv2.imread(str(file / 'mask.png'), cv2.IMREAD_GRAYSCALE) > 0
+            mask = cv2.imread(str(file / 'mask.png'), cv2.IMREAD_UNCHANGED) > 0
         else:
             mask = np.ones(image.shape[:2], dtype=bool)
 
     return image, points, mask
+
+
+def save_glb(
+    save_path: Union[str, os.PathLike], 
+    vertices: np.ndarray, 
+    faces: np.ndarray, 
+    vertex_uvs: np.ndarray,
+    texture: np.ndarray,
+):
+    import trimesh
+    import trimesh.visual
+    from PIL import Image
+
+    trimesh.Trimesh(
+        vertices=vertices, 
+        faces=faces, 
+        visual = trimesh.visual.texture.TextureVisuals(
+            uv=vertex_uvs, 
+            material=trimesh.visual.material.PBRMaterial(
+                baseColorTexture=Image.fromarray(texture),
+                metallicFactor=0.5,
+                roughnessFactor=1.0
+            )
+        ),
+        process=False
+    ).export(save_path)
+
+
+def save_ply(
+    save_path: Union[str, os.PathLike], 
+    vertices: np.ndarray, 
+    faces: np.ndarray, 
+    vertex_colors: np.ndarray,
+):
+    import trimesh
+    import trimesh.visual
+    from PIL import Image
+
+    trimesh.Trimesh(
+        vertices=vertices, 
+        faces=faces, 
+        vertex_colors=vertex_colors,
+        process=False
+    ).export(save_path)
