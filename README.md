@@ -162,6 +162,8 @@ Note that the panorama image must have spherical parameterization (e.g., environ
 
 <div align="center">
   <img src="./assets/panorama_pipeline.png" width="80%">
+
+The photo is from [this URL](https://commons.wikimedia.org/wiki/Category:360%C2%B0_panoramas_with_equirectangular_projection#/media/File:Braunschweig_Sankt-%C3%84gidien_Panorama_02.jpg)
 </div>
 
 ## License
