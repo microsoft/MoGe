@@ -210,6 +210,7 @@ def merge_panorama_depth(width: int, height: int, distance_maps: List[np.ndarray
 @click.option('--resolution_level', type=int, default=9, help='An integer [0-9] for the resolution level of inference. The higher, the better but slower. Default is 9. Note that it is irrelevant to the output resolution.')
 @click.option('--threshold', type=float, default=0.03, help='Threshold for removing edges. Default is 0.03. Smaller value removes more edges. "inf" means no thresholding.')
 @click.option('--batch_size', type=int, default=4, help='Batch size for inference. Default is 4.')
+@click.option('--splited', 'save_splited', is_flag=True, help='Whether to save the splited images. Default is False.')
 @click.option('--maps', 'save_maps_', is_flag=True, help='Whether to save the output maps and fov(image, depth, mask, points, fov).')
 @click.option('--glb', 'save_glb_', is_flag=True, help='Whether to save the output as a.glb file. The color will be saved as a texture.')
 @click.option('--ply', 'save_ply_', is_flag=True, help='Whether to save the output as a.ply file. The color will be saved as vertex colors.')
@@ -223,6 +224,7 @@ def main(
     resolution_level: int,
     threshold: float,
     batch_size: int,
+    save_splited: bool,
     save_maps_: bool,
     save_glb_: bool,
     save_ply_: bool,
@@ -260,16 +262,23 @@ def main(
             print('Inferring...')
         else:
             pbar.set_postfix_str(f'Inferring')
-        splited_distance_maps, splited_masks = [], []
+        splited_distance_maps, splited_masks, splited_depth_maps = [], [], []
         for i in trange(0, len(splited_images), batch_size, desc='Inferring splited views', disable=len(splited_images) <= batch_size, leave=False):
             image_tensor = torch.tensor(np.stack(splited_images[i:i + batch_size]) / 255, dtype=torch.float32, device=device).permute(0, 3, 1, 2)
             fov_x, fov_y = np.rad2deg(utils3d.numpy.intrinsics_to_fov(np.array(splited_intriniscs[i:i + batch_size])))
             fov_x = torch.tensor(fov_x, dtype=torch.float32, device=device)
             output = model.infer(image_tensor, fov_x=fov_x, apply_mask=False)
-            memory_allocated = torch.cuda.max_memory_allocated(device)
-            distance_map, mask = output['points'].norm(dim=-1).cpu().numpy(), output['mask'].cpu().numpy()
+            distance_map, mask  = output['points'].norm(dim=-1).cpu().numpy(), output['mask'].cpu().numpy()
             splited_distance_maps.extend(list(distance_map))
             splited_masks.extend(list(mask))
+
+        # Save splited
+        if save_splited:
+            splited_save_path = Path(output_path, image_path.stem, 'splited')
+            splited_save_path.mkdir(exist_ok=True, parents=True)
+            for i in range(len(splited_images)):
+                cv2.imwrite(str(splited_save_path / f'{i:02d}.jpg'), cv2.cvtColor(splited_images[i], cv2.COLOR_RGB2BGR))
+                cv2.imwrite(str(splited_save_path / f'{i:02d}_distance_vis.png'), cv2.cvtColor(colorize_depth(splited_distance_maps[i], splited_masks[i]), cv2.COLOR_RGB2BGR))
 
         # Merge
         if pbar.disable:
@@ -278,6 +287,7 @@ def main(
             pbar.set_postfix_str(f'Merging')
         panorama_depth, panorama_mask = merge_panorama_depth(width, height, splited_distance_maps, splited_masks, splited_extrinsics, splited_intriniscs)
         panorama_depth = panorama_depth.astype(np.float32)
+        panorama_depth = np.where(panorama_mask, panorama_depth, np.inf)
         points = panorama_depth[:, :, None] * spherical_uv_to_directions(utils3d.numpy.image_uv(width=width, height=height))
         
         # Write outputs
@@ -285,7 +295,7 @@ def main(
         save_path.mkdir(exist_ok=True, parents=True)
         if save_maps_:
             cv2.imwrite(str(save_path / 'image.jpg'), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
-            cv2.imwrite(str(save_path / 'depth.png'), cv2.cvtColor(colorize_depth(panorama_depth, mask=panorama_mask), cv2.COLOR_RGB2BGR))
+            cv2.imwrite(str(save_path / 'depth.png'), cv2.cvtColor(colorize_depth(panorama_depth), cv2.COLOR_RGB2BGR))
             cv2.imwrite(str(save_path / 'depth.exr'), panorama_depth, [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_FLOAT])
             cv2.imwrite(str(save_path / 'points.exr'), points, [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_FLOAT])
             cv2.imwrite(str(save_path /'mask.png'), (panorama_mask * 255).astype(np.uint8))

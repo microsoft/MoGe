@@ -159,6 +159,11 @@ The output maps will be combined to produce a panorama depth map and point map.
 
 Note that the panorama image must have spherical parameterization (e.g., environment maps or equirectangular images). Other formats must be converted to spherical format before using this script. Run `python scripts/infer_panorama.py --help` for detailed options.
 
+
+<div align="center">
+  <img src="./assets/panorama_pipeline.png" width="80%">
+</div>
+
 ## License
 
 MoGe code is released under the MIT license, except for DINOv2 code in `moge/model/dinov2` which is released by Meta AI under the Apache 2.0 license. 
