@@ -3,6 +3,7 @@ import torch
 from numbers import Number
 import inspect
 from functools import wraps
+from .._helpers import suppress_traceback
 
 
 def get_device(args, kwargs):
@@ -55,7 +56,7 @@ def broadcast_args(args, kwargs, args_dim, kwargs_dim):
             kwargs[key] = torch.broadcast_to(arg, [*spatial, *arg.shape[arg.ndim-kwargs_dim[key]:]])
     return args, kwargs, spatial
 
-
+@suppress_traceback
 def batched(*dims):
     """
     Decorator that allows a function to be called with batched arguments.

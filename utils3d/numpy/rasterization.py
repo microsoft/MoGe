@@ -12,6 +12,7 @@ __all__ = [
     'rasterize_triangle_faces',
     'rasterize_edges',
     'texture',
+    'test_rasterization',
     'warp_image_by_depth',
 ]
 
@@ -36,34 +37,22 @@ def one_value(dtype):
         return 65535
     else:
         return 1
-    
+
 
 class RastContext:
-    def __init__(self, standalone: bool = True, backend: str = None, **kwargs):
+    def __init__(self, *args, **kwargs):
         """
         Create a moderngl context.
 
         Args:
-            standalone (bool, optional): whether to create a standalone context. Defaults to True.
-            backend (str, optional): backend to use. Defaults to None.
-
-        Keyword Args:
             See moderngl.create_context
         """
-        if backend is None:
-            self.mgl_ctx = moderngl.create_context(standalone=standalone, **kwargs)
+        if len(args) == 1 and isinstance(args[0], moderngl.Context):
+            self.mgl_ctx = args[0]
         else:
-            self.mgl_ctx = moderngl.create_context(standalone=standalone, backend=backend, **kwargs)
-
+            self.mgl_ctx = moderngl.create_context(*args, **kwargs)
         self.__prog_src = {}
         self.__prog = {}
-
-    def __del__(self):
-        self.mgl_ctx.release()
-
-    def screen_quad(self) -> moderngl.VertexArray:
-        self.screen_quad_vbo = self.mgl_ctx.buffer(np.array([[-1, -1], [1, -1], [1, 1], [-1, 1]], dtype='f4'))
-        self.screen_quad_ibo = self.mgl_ctx.buffer(np.array([0, 1, 2, 0, 2, 3], dtype=np.int32))
 
     def program_vertex_attribute(self, n: int) -> moderngl.Program:
         assert n in [1, 2, 3, 4], 'vertex attribute only supports channels 1, 2, 3, 4'
@@ -140,6 +129,14 @@ def rasterize_triangle_faces(
     assert vertices.dtype == np.float32
     assert faces.dtype == np.uint32 or faces.dtype == np.int32
     assert attr.dtype == np.float32, "Attribute should be float32"
+    assert transform is None or transform.shape == (4, 4), f"Transform should be a 4x4 matrix, but got {transform.shape}"
+    assert transform is None or transform.dtype == np.float32, f"Transform should be float32, but got {transform.dtype}"
+    if image is not None:
+        assert image.ndim == 3 and image.shape == (height, width, attr.shape[1]), f"Image should be a 3D array with shape (H, W, {attr.shape[1]}), but got {image.shape}"
+        assert image.dtype == np.float32, f"Image should be float32, but got {image.dtype}"
+    if depth is not None:
+        assert depth.ndim == 2 and depth.shape == (height, width), f"Depth should be a 2D array with shape (H, W), but got {depth.shape}"
+        assert depth.dtype == np.float32, f"Depth should be float32, but got {depth.dtype}"
 
     C = attr.shape[1]
     prog = ctx.program_vertex_attribute(C)
@@ -173,6 +170,8 @@ def rasterize_triangle_faces(
     fbo.use()
     fbo.viewport = (0, 0, width, height)
     ctx.mgl_ctx.depth_func = '<'
+    if depth is None:
+        ctx.mgl_ctx.clear(depth=1.0)
     ctx.mgl_ctx.enable(ctx.mgl_ctx.DEPTH_TEST)
     if cull_backface:
         ctx.mgl_ctx.enable(ctx.mgl_ctx.CULL_FACE)
@@ -273,6 +272,8 @@ def rasterize_edges(
     prog['u_mvp'].write(transform.transpose().copy().astype('f4'))
     fbo.use()
     fbo.viewport = (0, 0, width, height)
+    if depth is None:
+        ctx.mgl_ctx.clear(depth=1.0)
     ctx.mgl_ctx.depth_func = '<'
     ctx.mgl_ctx.enable(ctx.mgl_ctx.DEPTH_TEST)
     ctx.mgl_ctx.line_width = line_width
@@ -445,23 +446,22 @@ def warp_image_by_depth(
 
     return tgt_image, tgt_depth
 
-def test():
+def test_rasterization(ctx: RastContext):
     """
     Test if rasterization works. It will render a cube with random colors and save it as a CHECKME.png file.
     """
-    ctx = RastContext(backend='egl')
     vertices, faces = utils.cube(tri=True)
     attr = np.random.rand(len(vertices), 3).astype(np.float32)
     perspective = transforms.perspective(np.deg2rad(60), 1, 0.01, 100)
     view = transforms.view_look_at(np.array([2, 2, 2]), np.array([0, 0, 0]), np.array([0, 1, 0]))
-    image, _ = rasterize_triangle_faces(
+    image, depth = rasterize_triangle_faces(
         ctx, 
         vertices, 
         faces, 
         attr, 
         512, 512, 
-        transform=perspective @ view, 
-        cull_backface=True,
+        transform=(perspective @ view).astype(np.float32), 
+        cull_backface=False,
         return_depth=True,
     )   
     import cv2

@@ -36,17 +36,6 @@ __all__ = [
 ]
 
 
-def no_runtime_warnings(fn):
-    """
-    Disable runtime warnings in numpy.
-    """
-    @functools.wraps(fn)
-    def wrapper(*args, **kwargs):
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            return fn(*args, **kwargs)
-    return wrapper
-
 
 def sliding_window_1d(x: np.ndarray, window_size: int, stride: int, axis: int = -1):
     """

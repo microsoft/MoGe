@@ -1,7 +1,7 @@
 import importlib
 import itertools
 import torch
-
+from typing import TYPE_CHECKING
 
 __modules_all__ = {
     'mesh': [
@@ -10,8 +10,14 @@ __modules_all__ = {
         'compute_face_angles',
         'compute_vertex_normal',
         'compute_vertex_normal_weighted',
+        'compute_edges',
+        'compute_connected_components',
+        'compute_edge_connected_components',
+        'compute_boundarys',
+        'compute_dual_graph',
         'remove_unreferenced_vertices',
         'remove_corrupted_faces',
+        'remove_isolated_pieces',
         'merge_duplicate_vertices',
         'subdivide_mesh_simple',
         'compute_face_tbn',
@@ -125,7 +131,7 @@ def __getattr__(name):
     return globals()[name]
 
 
-if __name__ == '__main__':
+if TYPE_CHECKING:
     from .transforms import *
     from .mesh import *
     from .utils import *

@@ -10,8 +10,14 @@ __all__ = [
     'compute_face_angles',
     'compute_vertex_normal',
     'compute_vertex_normal_weighted',
+    'compute_edges',
+    'compute_connected_components',
+    'compute_edge_connected_components',
+    'compute_boundarys',
+    'compute_dual_graph',
     'remove_unreferenced_vertices',
     'remove_corrupted_faces',
+    'remove_isolated_pieces',
     'merge_duplicate_vertices',
     'subdivide_mesh_simple',
     'compute_face_tbn',
@@ -22,6 +28,43 @@ __all__ = [
     'laplacian_hc_smooth_mesh',
 ]
 
+
+def _group(
+    values: torch.Tensor,
+    required_group_size: Optional[int] = None,
+    return_values: bool = False
+) -> Tuple[Union[List[torch.Tensor], torch.Tensor], Optional[torch.Tensor]]:
+    """
+    Group values into groups with identical values.
+    
+    Args:
+        values (torch.Tensor): [N] values to group
+        required_group_size (int, optional): required group size. Defaults to None.
+        return_values (bool, optional): return values of groups. Defaults to False.
+        
+    Returns:
+        group (Union[List[torch.Tensor], torch.Tensor]): list of groups or group indices. It will be a list of groups if required_group_size is None, otherwise a tensor of group indices.
+        group_values (Optional[torch.Tensor]): values of groups. Only returned if return_values is True.
+    """
+    sorted_values, indices = torch.sort(values)
+    nondupe = torch.cat([torch.tensor([True], dtype=torch.bool, device=values.device), sorted_values[1:] != sorted_values[:-1]])
+    nondupe_indices = torch.cumsum(nondupe, dim=0) - 1
+    counts = torch.bincount(nondupe_indices)
+    if required_group_size is None:
+        groups = torch.split(indices, counts.tolist())
+        if return_values:
+            group_values = sorted_values[nondupe]
+            return groups, group_values
+        else:
+            return groups
+    else:
+        counts = counts[nondupe_indices]
+        groups = indices[counts == required_group_size].reshape(-1, required_group_size)
+        if return_values:
+            group_values = sorted_values[nondupe][counts[nondupe] == required_group_size]
+            return groups, group_values
+        else:
+            return groups
 
 def triangulate(
     faces: torch.Tensor,
@@ -183,6 +226,184 @@ def compute_vertex_normal_weighted(
     return vertex_normal
 
 
+def compute_edges(
+    faces: torch.Tensor
+) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """
+    Compute edges of a mesh.
+    
+    Args:
+        faces (torch.Tensor): [T, 3] triangular face indices
+        
+    Returns:
+        edges (torch.Tensor): [E, 2] edge indices
+        face2edge (torch.Tensor): [T, 3] mapping from face to edge
+        counts (torch.Tensor): [E] degree of each edge
+    """
+    T = faces.shape[0]
+    edges = torch.cat([faces[:, [0, 1]], faces[:, [1, 2]], faces[:, [2, 0]]], dim=0)    # [3T, 2]
+    edges = torch.sort(edges, dim=1).values
+    edges, inv_map, counts = torch.unique(edges, return_inverse=True, return_counts=True, dim=0)
+    face2edge = inv_map.view(3, T).T
+    return edges, face2edge, counts
+
+
+def compute_connected_components(
+    faces: torch.Tensor,
+    edges: torch.Tensor=None,
+    face2edge: torch.Tensor=None
+) -> List[torch.Tensor]:
+    """
+    Compute connected faces of a mesh.
+
+    Args:
+        faces (torch.Tensor): [T, 3] triangular face indices
+        edges (torch.Tensor, optional): [E, 2] edge indices. Defaults to None.
+        face2edge (torch.Tensor, optional): [T, 3] mapping from face to edge. Defaults to None.
+            NOTE: If edges and face2edge are not provided, they will be computed.
+
+    Returns:
+        components (List[torch.Tensor]): list of connected faces
+    """
+    T = faces.shape[0]
+    if edges is None or face2edge is None:
+        edges, face2edge, _ = compute_edges(faces)
+    E = edges.shape[0]
+
+    labels = torch.arange(T, dtype=torch.int32, device=faces.device)
+    while True:
+        edge_labels = torch.scatter_reduce(
+            torch.zeros(E, dtype=torch.int32, device=faces.device),
+            0,
+            face2edge.flatten().long(),
+            labels.view(-1, 1).expand(-1, 3).flatten(),
+            reduce='amin',
+            include_self=False
+        )
+        new_labels = torch.min(edge_labels[face2edge], dim=-1).values
+        if torch.equal(labels, new_labels):
+            break
+        labels = new_labels
+
+    components = _group(labels)
+
+    return components
+
+
+def compute_edge_connected_components(
+    edges: torch.Tensor,
+) -> List[torch.Tensor]:
+    """
+    Compute connected edges of a mesh.
+
+    Args:
+        edges (torch.Tensor): [E, 2] edge indices
+
+    Returns:
+        components (List[torch.Tensor]): list of connected edges
+    """
+    E = edges.shape[0]
+
+    # Re-index edges
+    verts, edges = torch.unique(edges.flatten(), return_inverse=True)
+    edges = edges.view(-1, 2)
+    V = verts.shape[0]
+
+    labels = torch.arange(E, dtype=torch.int32, device=edges.device)
+    while True:
+        vertex_labels = torch.scatter_reduce(
+            torch.zeros(V, dtype=torch.int32, device=edges.device),
+            0,
+            edges.flatten().long(),
+            labels.view(-1, 1).expand(-1, 2).flatten(),
+            reduce='amin',
+            include_self=False
+        )
+        new_labels = torch.min(vertex_labels[edges], dim=-1).values
+        if torch.equal(labels, new_labels):
+            break
+        labels = new_labels
+
+    components = _group(labels)
+
+    return components
+
+
+def compute_boundarys(
+    faces: torch.Tensor,
+    edges: torch.Tensor=None,
+    face2edge: torch.Tensor=None,
+    edge_degrees: torch.Tensor=None
+) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
+    """
+    Compute boundary edges of a mesh.
+
+    Args:
+        faces (torch.Tensor): [T, 3] triangular face indices
+        edges (torch.Tensor): [E, 2] edge indices.
+        face2edge (torch.Tensor): [T, 3] mapping from face to edge.
+        edge_degrees (torch.Tensor): [E] degree of each edge.
+
+    Returns:
+        boundary_edge_indices (List[torch.Tensor]): list of boundary edge indices
+        boundary_face_indices (List[torch.Tensor]): list of boundary face indices
+    """    
+    # Map each edge to boundary edge index
+    boundary_edges = edges[edge_degrees == 1]                                                                     # [BE, 2]
+    boundary_edges_idx = torch.nonzero(edge_degrees == 1, as_tuple=False).flatten()                               # [BE]
+    E = edges.shape[0]                                                                                             # Edge count
+    BE = boundary_edges.shape[0]                                                                            # Boundary edge count
+    map_to_boundary_edges = torch.full((E,), -1, dtype=torch.int32, device=faces.device)                    # [E]
+    map_to_boundary_edges[boundary_edges_idx] = torch.arange(BE, dtype=torch.int32, device=faces.device)
+    
+    # Re-index boundary vertices
+    boundary_vertices, boundary_edges = torch.unique(boundary_edges.flatten(), return_inverse=True)
+    boundary_edges = boundary_edges.view(-1, 2)
+    BV = boundary_vertices.shape[0]
+    
+    boundary_edge_labels = torch.arange(BE, dtype=torch.int32, device=faces.device)
+    while True:
+        boundary_vertex_labels = torch.scatter_reduce(
+            torch.zeros(BV, dtype=torch.int32, device=faces.device),
+            0,
+            boundary_edges.flatten().long(),
+            boundary_edge_labels.view(-1, 1).expand(-1, 2).flatten(),
+            reduce='amin',
+            include_self=False
+        )
+        new_boundary_edge_labels = torch.min(boundary_vertex_labels[boundary_edges], dim=-1).values
+        if torch.equal(boundary_edge_labels, new_boundary_edge_labels):
+            break
+        boundary_edge_labels = new_boundary_edge_labels
+        
+    labels = torch.unique(boundary_edge_labels)
+    boundary_edge_indices = [boundary_edges_idx[boundary_edge_labels == label] for label in labels]
+    edge_labels = torch.full((E,), -1, dtype=torch.int32, device=faces.device)
+    edge_labels[boundary_edges_idx] = boundary_edge_labels
+    boundary_face_indices = [torch.nonzero((edge_labels[face2edge] == label).any(dim=-1), as_tuple=False).flatten() for label in labels]
+    
+    return boundary_edge_indices, boundary_face_indices
+
+
+def compute_dual_graph(
+    face2edge: torch.Tensor,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Compute dual graph of a mesh.
+    
+    Args:
+        face2edge (torch.Tensor): [T, 3] mapping from face to edge.
+            
+    Returns:
+        dual_edges (torch.Tensor): [DE, 2] face indices of dual edges
+        dual_edge2edge (torch.Tensor): [DE] mapping from dual edge to edge
+    """
+    all_edge_indices = face2edge.flatten()  # [3T]
+    dual_edges, dual_edge2edge = _group(all_edge_indices, required_group_size=2, return_values=True)
+    dual_edges = dual_edges // face2edge.shape[1]
+    return dual_edges, dual_edge2edge
+
+
 def remove_unreferenced_vertices(
     faces: torch.Tensor,
     *vertice_attrs,
@@ -251,6 +472,72 @@ def merge_duplicate_vertices(
     uni[uni_inv] = vertices
     faces = uni_inv[faces]
     return uni, faces
+
+
+def remove_isolated_pieces(
+    vertices: torch.Tensor,
+    faces: torch.Tensor,
+    connected_components: List[torch.Tensor] = None,
+    thresh_num_faces: int = None,
+    thresh_radius: float = None,
+    thresh_boundary_ratio: float = None,
+    remove_unreferenced: bool = True,
+) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Remove isolated pieces of a mesh. 
+    Isolated pieces are removed, and the face indices are updated accordingly.
+    If no face is left, will return the largest connected component.
+
+    Args:
+        vertices (torch.Tensor): [N, 3] 3-dimensional vertices
+        faces (torch.Tensor): [T, 3] triangular face indices
+        connected_components (List[torch.Tensor], optional): connected components of the mesh. If None, it will be computed. Defaults to None.
+        thresh_num_faces (int, optional): threshold of number of faces for isolated pieces. Defaults to None.
+        thresh_radius (float, optional): threshold of radius for isolated pieces. Defaults to None.
+        remove_unreferenced (bool, optional): remove unreferenced vertices after removing isolated pieces. Defaults to True.
+
+    Returns:
+        vertices (torch.Tensor): [N_, 3] 3-dimensional vertices
+        faces (torch.Tensor): [T, 3] triangular face indices
+    """
+    if connected_components is None:
+        connected_components = compute_connected_components(faces)
+    connected_components = sorted(connected_components, key=lambda x: len(x), reverse=True)
+    if thresh_num_faces is not None:
+        removed = []
+        for i in range(1, len(connected_components)):
+            if len(connected_components[i]) < thresh_num_faces:
+                removed.append(i)
+        for i in removed[::-1]:
+            connected_components.pop(i)
+    if thresh_radius is not None:
+        removed = []
+        for i in range(1, len(connected_components)):
+            comp_vertices = vertices[faces[connected_components[i]].flatten().unique()]
+            comp_center = comp_vertices.mean(dim=0)
+            comp_radius = (comp_vertices - comp_center).norm(p=2, dim=-1).max()
+            if comp_radius < thresh_radius:
+                removed.append(i)
+        for i in removed[::-1]:
+            connected_components.pop(i)
+    if thresh_boundary_ratio is not None:
+        removed = []
+        for i in range(1, len(connected_components)):
+            edges = torch.cat([faces[connected_components[i]][:, [0, 1]], faces[connected_components[i]][:, [1, 2]], faces[connected_components[i]][:, [2, 0]]], dim=0)
+            edges = torch.sort(edges, dim=1).values
+            edges, counts = torch.unique(edges, return_counts=True, dim=0)
+            num_boundary_edges = (counts == 1).sum().item()
+            num_faces = len(connected_components[i])
+            if num_boundary_edges / num_faces > thresh_boundary_ratio:
+                removed.append(i)
+        for i in removed[::-1]:
+            connected_components.pop(i)
+    
+    # post-process
+    faces = torch.cat([faces[connected_components[i]] for i in range(len(connected_components))], dim=0)
+    if remove_unreferenced:
+        faces, vertices = remove_unreferenced_vertices(faces, vertices)
+    return vertices, faces
 
 
 def subdivide_mesh_simple(vertices: torch.Tensor, faces: torch.Tensor, n: int = 1) -> Tuple[torch.Tensor, torch.Tensor]:

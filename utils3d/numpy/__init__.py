@@ -4,6 +4,7 @@
 import importlib
 import itertools
 import numpy
+from typing import TYPE_CHECKING
 
 
 __modules_all__ = {
@@ -108,6 +109,7 @@ __modules_all__ = {
         'rasterize_edges',
         'texture',
         'warp_image_by_depth',
+        'test_rasterization'
     ],
 }
 
@@ -131,7 +133,7 @@ def __getattr__(name):
     return globals()[name]
 
 
-if __name__ == '__main__':
+if TYPE_CHECKING:
     from .quadmesh import *
     from .transforms import *
     from .mesh import *

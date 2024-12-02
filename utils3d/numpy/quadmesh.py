@@ -1,7 +1,6 @@
 import numpy as np
 import scipy as sp
 import scipy.optimize as spopt
-import piqp
 from typing import *
 
 
@@ -370,6 +369,7 @@ def sovle_quad_qp(
     lb = np.zeros(Q)
     ub = np.ones(Q)
 
+    import piqp
     solver = piqp.SparseSolver()
     solver.settings.verbose = True
     solver.settings.compute_timings = True

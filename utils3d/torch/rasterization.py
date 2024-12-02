@@ -20,7 +20,6 @@ class RastContext:
     Create a rasterization context. Nothing but a wrapper of nvdiffrast.torch.RasterizeCudaContext or nvdiffrast.torch.RasterizeGLContext.
     """
     def __init__(self, nvd_ctx: Union[dr.RasterizeCudaContext, dr.RasterizeGLContext] = None, *, backend: Literal['cuda', 'gl'] = 'gl',  device: Union[str, torch.device] = None):
-        import nvdiffrast.torch as dr
         if nvd_ctx is not None:
             self.nvd_ctx = nvd_ctx
             return 
@@ -37,9 +36,11 @@ def rasterize_triangle_faces(
     ctx: RastContext,
     vertices: torch.Tensor,
     faces: torch.Tensor,
-    attr: torch.Tensor,
     width: int,
     height: int,
+    attr: torch.Tensor = None,
+    uv: torch.Tensor = None,
+    texture: torch.Tensor = None,
     model: torch.Tensor = None,
     view: torch.Tensor = None,
     projection: torch.Tensor = None,
@@ -53,9 +54,11 @@ def rasterize_triangle_faces(
         ctx (GLContext): rasterizer context
         vertices (np.ndarray): (B, N, 2 or 3 or 4)
         faces (torch.Tensor): (T, 3)
-        attr (torch.Tensor): (B, N, C)
         width (int): width of the output image
         height (int): height of the output image
+        attr (torch.Tensor, optional): (B, N, C) vertex attributes. Defaults to None.
+        uv (torch.Tensor, optional): (B, N, 2) uv coordinates. Defaults to None.
+        texture (torch.Tensor, optional): (B, H, W, C) texture. Defaults to None.
         model (torch.Tensor, optional): ([B,] 4, 4) model matrix. Defaults to None (identity).
         view (torch.Tensor, optional): ([B,] 4, 4) view matrix. Defaults to None (identity).
         projection (torch.Tensor, optional): ([B,] 4, 4) projection matrix. Defaults to None (identity).
@@ -63,9 +66,16 @@ def rasterize_triangle_faces(
         diff_attrs (Union[None, List[int]], optional): indices of attributes to compute screen-space derivatives. Defaults to None.
 
     Returns:
-        image: (torch.Tensor): (B, C, H, W)
-        depth: (torch.Tensor): (B, H, W) screen space depth, ranging from 0 (near) to 1. (far)
-            NOTE: Empty pixels will have depth 1., i.e. far plane.
+        Dictionary containing:
+          - image: (torch.Tensor): (B, C, H, W)
+          - depth: (torch.Tensor): (B, H, W) screen space depth, ranging from 0 (near) to 1. (far)
+                   NOTE: Empty pixels will have depth 1., i.e. far plane.
+          - mask: (torch.BoolTensor): (B, H, W) mask of valid pixels
+          - image_dr: (torch.Tensor): (B, 4, H, W) screen space derivatives of the attributes
+          - face_id: (torch.Tensor): (B, H, W) face ids
+          - uv: (torch.Tensor): (B, N, 2) uv coordinates (if uv is not None)
+          - uv_dr: (torch.Tensor): (B, N, 4) uv derivatives (if uv is not None)
+          - texture: (torch.Tensor): (B, H, W, C) texture (if uv and texture are not None)
     """
     assert vertices.ndim == 3
     assert faces.ndim == 2
@@ -87,24 +97,44 @@ def rasterize_triangle_faces(
     
     pos_clip = vertices @ mvp.transpose(-1, -2)
     faces = faces.contiguous()
-    attr = attr.contiguous()
+    if attr is not None:
+        attr = attr.contiguous()
     
     rast_out, rast_db = dr.rasterize(ctx.nvd_ctx, pos_clip, faces, resolution=[height, width], grad_db=True)
-    image, image_dr = dr.interpolate(attr, rast_out, faces, rast_db, diff_attrs=diff_attrs)
-    if antialiasing == True:
-        image = dr.antialias(image, rast_out, pos_clip, faces)
-    elif isinstance(antialiasing, list):
-        aa_image = dr.antialias(image[..., antialiasing], rast_out, pos_clip, faces)
-        image[..., antialiasing] = aa_image
+    face_id = rast_out[..., 3].flip(1)
+    depth = rast_out[..., 2].flip(1)
+    mask = (face_id > 0).float()
+    depth = (depth * 0.5 + 0.5) * mask + (1.0 - mask)
 
-    image = image.flip(1).permute(0, 3, 1, 2)
-    
-    depth = rast_out[..., 2].flip(1) 
-    depth = (depth * 0.5 + 0.5) * (depth > 0).float() + (depth == 0).float()
+    ret = {
+        'depth': depth,
+        'mask': mask,
+        'face_id': face_id,
+    }
+
+    if attr is not None:
+        image, image_dr = dr.interpolate(attr, rast_out, faces, rast_db, diff_attrs=diff_attrs)
+        if antialiasing == True:
+            image = dr.antialias(image, rast_out, pos_clip, faces)
+        elif isinstance(antialiasing, list):
+            aa_image = dr.antialias(image[..., antialiasing], rast_out, pos_clip, faces)
+            image[..., antialiasing] = aa_image
+        image = image.flip(1).permute(0, 3, 1, 2)
+        ret['image'] = image
+
+    if uv is not None:
+        uv_map, uv_map_dr = dr.interpolate(uv, rast_out, faces, rast_db, diff_attrs='all')
+        ret['uv'] = uv_map
+        ret['uv_dr'] = uv_map_dr
+        if texture is not None:
+            texture_map = dr.texture(ctx.nvd_ctx, uv_map, uv_map_dr)
+            ret['texture'] = texture_map.flip(1).permute(0, 3, 1, 2)
+
     if diff_attrs is not None:
         image_dr = image_dr.flip(1).permute(0, 3, 1, 2)
-        return image, depth, image_dr
-    return image, depth
+        ret['image_dr'] = image_dr
+
+    return ret
 
 
 def texture(
@@ -254,18 +284,18 @@ def warp_image_by_depth(
         ctx,
         pts,
         faces,
-        attr,
         width,
         height,
+        attr=attr,
         view=view_tgt,
         perspective=perspective_tgt,
         antialiasing=antialiasing,
         diff_attrs=diff_attrs,
     )
     if return_dr:
-        output_image, screen_depth, output_dr = rast
+        output_image, screen_depth, output_dr = rast['image'], rast['depth'], rast['image_dr']
     else:
-        output_image, screen_depth = rast
+        output_image, screen_depth = rast['image'], rast['depth']
     output_mask = screen_depth < 1.0
 
     if mask is not None:
@@ -347,14 +377,14 @@ def warp_image_by_forward_flow(
         ctx,
         pts,
         faces,
-        attr,
         width,
         height,
+        attr=attr,
         view=view,
         perspective=perspective,
         antialiasing=antialiasing,
     )
-    output_image, screen_depth = rast
+    output_image, screen_depth = rast['image'], rast['depth']
     output_mask = screen_depth < 1.0
     output_image = output_image * output_mask.unsqueeze(1)
 

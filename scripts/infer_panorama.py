@@ -51,14 +51,14 @@ def directions_to_spherical_uv(directions: np.ndarray):
 def split_panorama_image(image: np.ndarray, extrinsics: np.ndarray, intrinsics: np.ndarray, resolution: int):
     height, width = image.shape[:2]
     uv = utils3d.numpy.image_uv(width=resolution, height=resolution)
-    splited_images = []
+    splitted_images = []
     for i in range(len(extrinsics)):
         spherical_uv = directions_to_spherical_uv(utils3d.numpy.unproject_cv(uv, extrinsics=extrinsics[i], intrinsics=intrinsics[i]))
         pixels = utils3d.numpy.uv_to_pixel(spherical_uv, width=width, height=height).astype(np.float32)
 
-        splited_image = cv2.remap(image, pixels[..., 0], pixels[..., 1], interpolation=cv2.INTER_LINEAR)    
-        splited_images.append(splited_image)
-    return splited_images
+        splitted_image = cv2.remap(image, pixels[..., 0], pixels[..., 1], interpolation=cv2.INTER_LINEAR)    
+        splitted_images.append(splitted_image)
+    return splitted_images
 
 
 def poisson_equation(width: int, height: int, wrap_x: bool = False, wrap_y: bool = False) -> Tuple[csr_array, ndarray]:
@@ -133,8 +133,8 @@ def merge_panorama_depth(width: int, height: int, distance_maps: List[np.ndarray
         
         projected_pixels = utils3d.numpy.uv_to_pixel(np.clip(projected_uv, 0, 1), width=distance_maps[i].shape[1], height=distance_maps[i].shape[0]).astype(np.float32)
         
-        log_splited_distance = np.log(distance_maps[i])
-        panorama_log_distance_map = np.where(projection_valid_mask, cv2.remap(log_splited_distance, projected_pixels[..., 0], projected_pixels[..., 1], cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE), 0)
+        log_splitted_distance = np.log(distance_maps[i])
+        panorama_log_distance_map = np.where(projection_valid_mask, cv2.remap(log_splitted_distance, projected_pixels[..., 0], projected_pixels[..., 1], cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE), 0)
         panorama_pred_mask = projection_valid_mask & (cv2.remap(pred_masks[i].astype(np.uint8), projected_pixels[..., 0], projected_pixels[..., 1], cv2.INTER_NEAREST, borderMode=cv2.BORDER_REPLICATE) > 0)
 
         # calculate gradient map
@@ -210,7 +210,7 @@ def merge_panorama_depth(width: int, height: int, distance_maps: List[np.ndarray
 @click.option('--resolution_level', type=int, default=9, help='An integer [0-9] for the resolution level of inference. The higher, the better but slower. Default is 9. Note that it is irrelevant to the output resolution.')
 @click.option('--threshold', type=float, default=0.03, help='Threshold for removing edges. Default is 0.03. Smaller value removes more edges. "inf" means no thresholding.')
 @click.option('--batch_size', type=int, default=4, help='Batch size for inference. Default is 4.')
-@click.option('--splited', 'save_splited', is_flag=True, help='Whether to save the splited images. Default is False.')
+@click.option('--splitted', 'save_splitted', is_flag=True, help='Whether to save the splitted images. Default is False.')
 @click.option('--maps', 'save_maps_', is_flag=True, help='Whether to save the output maps and fov(image, depth, mask, points, fov).')
 @click.option('--glb', 'save_glb_', is_flag=True, help='Whether to save the output as a.glb file. The color will be saved as a texture.')
 @click.option('--ply', 'save_ply_', is_flag=True, help='Whether to save the output as a.ply file. The color will be saved as vertex colors.')
@@ -224,7 +224,7 @@ def main(
     resolution_level: int,
     threshold: float,
     batch_size: int,
-    save_splited: bool,
+    save_splitted: bool,
     save_maps_: bool,
     save_glb_: bool,
     save_ply_: bool,
@@ -253,49 +253,48 @@ def main(
             height, width = min(resize_to, int(resize_to * height / width)), min(resize_to, int(resize_to * width / height))
             image = cv2.resize(image, (width, height), cv2.INTER_AREA)
         
-        splited_extrinsics, splited_intriniscs = get_panorama_cameras()
-        splited_resolution = 512
-        splited_images = split_panorama_image(image, splited_extrinsics, splited_intriniscs, splited_resolution)
+        splitted_extrinsics, splitted_intriniscs = get_panorama_cameras()
+        splitted_resolution = 512
+        splitted_images = split_panorama_image(image, splitted_extrinsics, splitted_intriniscs, splitted_resolution)
 
         # Infer each view 
-        if pbar.disable:
-            print('Inferring...')
-        else:
-            pbar.set_postfix_str(f'Inferring')
-        splited_distance_maps, splited_masks, splited_depth_maps = [], [], []
-        for i in trange(0, len(splited_images), batch_size, desc='Inferring splited views', disable=len(splited_images) <= batch_size, leave=False):
-            image_tensor = torch.tensor(np.stack(splited_images[i:i + batch_size]) / 255, dtype=torch.float32, device=device).permute(0, 3, 1, 2)
-            fov_x, fov_y = np.rad2deg(utils3d.numpy.intrinsics_to_fov(np.array(splited_intriniscs[i:i + batch_size])))
+        print('Inferring...') if pbar.disable else pbar.set_postfix_str(f'Inferring')
+
+        splitted_distance_maps, splitted_masks = [], []
+        for i in trange(0, len(splitted_images), batch_size, desc='Inferring splitted views', disable=len(splitted_images) <= batch_size, leave=False):
+            image_tensor = torch.tensor(np.stack(splitted_images[i:i + batch_size]) / 255, dtype=torch.float32, device=device).permute(0, 3, 1, 2)
+            fov_x, fov_y = np.rad2deg(utils3d.numpy.intrinsics_to_fov(np.array(splitted_intriniscs[i:i + batch_size])))
             fov_x = torch.tensor(fov_x, dtype=torch.float32, device=device)
             output = model.infer(image_tensor, fov_x=fov_x, apply_mask=False)
-            distance_map, mask  = output['points'].norm(dim=-1).cpu().numpy(), output['mask'].cpu().numpy()
-            splited_distance_maps.extend(list(distance_map))
-            splited_masks.extend(list(mask))
+            distance_map, mask = output['points'].norm(dim=-1).cpu().numpy(), output['mask'].cpu().numpy()
+            splitted_distance_maps.extend(list(distance_map))
+            splitted_masks.extend(list(mask))
 
-        # Save splited
-        if save_splited:
-            splited_save_path = Path(output_path, image_path.stem, 'splited')
-            splited_save_path.mkdir(exist_ok=True, parents=True)
-            for i in range(len(splited_images)):
-                cv2.imwrite(str(splited_save_path / f'{i:02d}.jpg'), cv2.cvtColor(splited_images[i], cv2.COLOR_RGB2BGR))
-                cv2.imwrite(str(splited_save_path / f'{i:02d}_distance_vis.png'), cv2.cvtColor(colorize_depth(splited_distance_maps[i], splited_masks[i]), cv2.COLOR_RGB2BGR))
+        # Save splitted
+        if save_splitted:
+            splitted_save_path = Path(output_path, image_path.stem, 'splitted')
+            splitted_save_path.mkdir(exist_ok=True, parents=True)
+            for i in range(len(splitted_images)):
+                cv2.imwrite(str(splitted_save_path / f'{i:02d}.jpg'), cv2.cvtColor(splitted_images[i], cv2.COLOR_RGB2BGR))
+                cv2.imwrite(str(splitted_save_path / f'{i:02d}_distance_vis.png'), cv2.cvtColor(colorize_depth(splitted_distance_maps[i], splitted_masks[i]), cv2.COLOR_RGB2BGR))
 
         # Merge
-        if pbar.disable:
-            print('Merging...')
-        else:
-            pbar.set_postfix_str(f'Merging')
-        panorama_depth, panorama_mask = merge_panorama_depth(width, height, splited_distance_maps, splited_masks, splited_extrinsics, splited_intriniscs)
+        print('Merging...') if pbar.disable else pbar.set_postfix_str(f'Merging')
+
+        merging_width, merging_height = min(1920, width), min(960, height)
+        panorama_depth, panorama_mask = merge_panorama_depth(merging_width, merging_height, splitted_distance_maps, splitted_masks, splitted_extrinsics, splitted_intriniscs)
         panorama_depth = panorama_depth.astype(np.float32)
-        panorama_depth = np.where(panorama_mask, panorama_depth, np.inf)
+        panorama_depth = cv2.resize(panorama_depth, (width, height), cv2.INTER_LINEAR)
+        panorama_mask = cv2.resize(panorama_mask.astype(np.uint8), (width, height), cv2.INTER_NEAREST) > 0
         points = panorama_depth[:, :, None] * spherical_uv_to_directions(utils3d.numpy.image_uv(width=width, height=height))
         
         # Write outputs
+        print('Writing outputs...') if pbar.disable else pbar.set_postfix_str(f'Inferring')
         save_path = Path(output_path, image_path.relative_to(input_path).parent, image_path.stem)
         save_path.mkdir(exist_ok=True, parents=True)
         if save_maps_:
             cv2.imwrite(str(save_path / 'image.jpg'), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
-            cv2.imwrite(str(save_path / 'depth.png'), cv2.cvtColor(colorize_depth(panorama_depth), cv2.COLOR_RGB2BGR))
+            cv2.imwrite(str(save_path / 'depth_vis.png'), cv2.cvtColor(colorize_depth(panorama_depth, mask=panorama_mask), cv2.COLOR_RGB2BGR))
             cv2.imwrite(str(save_path / 'depth.exr'), panorama_depth, [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_FLOAT])
             cv2.imwrite(str(save_path / 'points.exr'), points, [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_FLOAT])
             cv2.imwrite(str(save_path /'mask.png'), (panorama_mask * 255).astype(np.uint8))

@@ -5,10 +5,10 @@ from pathlib import Path
 
 
 def read_ply(
-        file: Union[str, Path],
-        encoding: Union[str, None] = None,
-        ignore_unknown: bool = False
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    file: Union[str, Path],
+    encoding: Union[str, None] = None,
+    ignore_unknown: bool = False
+) -> Tuple[np.ndarray, np.ndarray]:
     """
     Read .ply file, without preprocessing.
     

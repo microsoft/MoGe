@@ -2,6 +2,7 @@ import numpy as np
 from typing import *
 from numbers import Number
 from ._helpers import batched
+from .._helpers import no_warnings
 
 
 __all__ = [
@@ -603,7 +604,8 @@ def project_cv(
     if extrinsics is not None:
         points = points @ extrinsics.swapaxes(-1, -2)
     points = points[..., :3] @ intrinsics.swapaxes(-1, -2)
-    uv_coord = points[..., :2] / points[..., 2:]
+    with no_warnings():
+        uv_coord = points[..., :2] / points[..., 2:]
     linear_depth = points[..., 2]
     return uv_coord, linear_depth
 
