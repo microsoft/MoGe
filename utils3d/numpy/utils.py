@@ -5,6 +5,7 @@ import warnings
 import functools
 
 from ._helpers import batched
+from .._helpers import no_warnings
 from . import transforms
 from . import mesh
 
@@ -101,8 +102,7 @@ def max_pool_2d(x: np.ndarray, kernel_size: Union[int, Tuple[int, int]], stride:
     axis = tuple(axis)
     return max_pool_nd(x, kernel_size, stride, padding, axis)
 
-
-@no_runtime_warnings
+@no_warnings(category=RuntimeWarning)
 def depth_edge(depth: np.ndarray, atol: float = None, rtol: float = None, kernel_size: int = 3, mask: np.ndarray = None) -> np.ndarray:
     """
     Compute the edge mask from depth map. The edge is defined as the pixels whose neighbors have large difference in depth.
@@ -124,14 +124,11 @@ def depth_edge(depth: np.ndarray, atol: float = None, rtol: float = None, kernel
     if atol is not None:
         edge |= diff > atol
     
-    with warnings.catch_warnings():
-        warnings.simplefilter("ignore", category=RuntimeWarning)
-        if rtol is not None:
-            edge |= diff / depth > rtol
+    if rtol is not None:
+        edge |= diff / depth > rtol
     return edge
 
 
-@no_runtime_warnings
 def depth_aliasing(depth: np.ndarray, atol: float = None, rtol: float = None, kernel_size: int = 3, mask: np.ndarray = None) -> np.ndarray:
     """
     Compute the map that indicates the aliasing of x depth map. The aliasing is defined as the pixels which neither close to the maximum nor the minimum of its neighbors.
@@ -158,8 +155,7 @@ def depth_aliasing(depth: np.ndarray, atol: float = None, rtol: float = None, ke
         edge |= diff / depth > rtol
     return edge
 
-
-@no_runtime_warnings
+@no_warnings(category=RuntimeWarning)
 def normals_edge(normals: np.ndarray, tol: float, kernel_size: int = 3, mask: np.ndarray = None) -> np.ndarray:
     """
     Compute the edge mask from normal map.
@@ -196,7 +192,8 @@ def normals_edge(normals: np.ndarray, tol: float, kernel_size: int = 3, mask: np
     edge = angle_diff > np.deg2rad(tol)
     return edge
 
-@no_runtime_warnings
+
+@no_warnings(category=RuntimeWarning)
 def points_to_normals(point: np.ndarray, mask: np.ndarray = None) -> np.ndarray:
     """
     Calculate normal map from point map. Value range is [-1, 1]. Normal direction in OpenGL identity camera's coordinate system.
