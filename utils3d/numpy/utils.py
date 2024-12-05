@@ -178,7 +178,7 @@ def normals_edge(normals: np.ndarray, tol: float, kernel_size: int = 3, mask: np
         axis=(-3, -2)
     )
     if mask is None:
-        angle_diff = np.acos((normals[..., None, None] * normals_window).sum(axis=-3)).max(axis=(-2, -1))
+        angle_diff = np.arccos((normals[..., None, None] * normals_window).sum(axis=-3)).max(axis=(-2, -1))
     else:
         mask_window = sliding_window_2d(
             np.pad(mask, (*([(0, 0)] * (mask.ndim - 3)), (padding, padding), (padding, padding)), mode='edge'), 
