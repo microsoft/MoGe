@@ -26,7 +26,7 @@ import utils3d
 
 @click.command(help='Inference script for the MoGe model.')
 @click.option('--input', 'input_path', type=click.Path(exists=True), help='Input image or folder path. "jpg" and "png" are supported.')
-@click.option('--fov_x', 'fov_x', type=float, default=None, help='If camera parameters are known, set the horizontal field of view in degrees. Otherwise, MoGe will estimate it.')
+@click.option('--fov_x', 'fov_x_', type=float, default=None, help='If camera parameters are known, set the horizontal field of view in degrees. Otherwise, MoGe will estimate it.')
 @click.option('--output', 'output_path', type=click.Path(), help='Output folder path')
 @click.option('--pretrained', 'pretrained_model_name_or_path', type=str, default='Ruicheng/moge-vitl', help='Pretrained model name or path. Default is "Ruicheng/moge-vitl"')
 @click.option('--device', 'device_name', type=str, default='cuda', help='Device name (e.g. "cuda", "cuda:0", "cpu"). Default is "cuda"')
@@ -39,7 +39,7 @@ import utils3d
 @click.option('--show', 'show', is_flag=True, help='Whether show the output in a window. Note that this requires pyglet<2 installed as required by trimesh.')
 def main(
     input_path: str,
-    fov_x: float,
+    fov_x_: float,
     output_path: str,
     pretrained_model_name_or_path: str,
     device_name: str,
@@ -73,7 +73,7 @@ def main(
         image_tensor = torch.tensor(image / 255, dtype=torch.float32, device=device).permute(2, 0, 1)
 
         # Inference
-        output = model.infer(image_tensor, fov_x=fov_x)
+        output = model.infer(image_tensor, fov_x=fov_x_)
         points, depth, mask, intrinsics = output['points'].cpu().numpy(), output['depth'].cpu().numpy(), output['mask'].cpu().numpy(), output['intrinsics'].cpu().numpy()
         normals, normals_mask = utils3d.numpy.points_to_normals(points, mask=mask)
 
