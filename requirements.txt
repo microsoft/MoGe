@@ -7,3 +7,18 @@ matplotlib      # ==3.9.2
 trimesh         # ==4.5.1
 pillow          # ==10.4.0
 huggingface_hub # ==0.25.2
+
+# Core Machine Learning libraries
+torch>=2.0
+torchvision
+timm
+einops
+
+# Geometry, Visualization, and I/O
+open3d
+numpy
+pyyaml
+
+# Additional utility libraries that MoGe might rely on
+requests
+tqdm
