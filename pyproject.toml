@@ -1,0 +1,23 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "moge"
+description = "MoGe: Unlocking Accurate Monocular Geometry Estimation for Open-Domain Images with Optimal Training Supervision"
+version = "0.1"
+dependencies = [
+    'numpy<2.0',
+    'click>=8.1.7',
+    'torch>=2.0',
+    'torchvision>=0.15',
+    'opencv-python>=4.10.0.84',
+    'scipy>=1.14.1',
+    'trimesh>=4.5.1',
+    'matplotlib>=3.9.2',
+    'pillow>=10.4.0',
+    'huggingface_hub>=0.25.2',
+]
+
+[tool.setuptools.packages]
+find = {}
