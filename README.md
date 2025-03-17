@@ -19,36 +19,40 @@ MoGe is a powerful model for recovering 3D geometry from monocular open-domain i
 * **Accurately** estimate 3D geometry in point map or mesh format from a **single** image.
 * Support various image resolutions and aspect ratios, ranging from **2:1** to **1:2**.
 * Capable of producing an extensive depth range, with distances from nearest to farthest reaching up to **1000x**.
-* **Fast** inference, typically **0.2s** for a single image on an A100 or RTX 3090 GPU.
+* **Fast** inference, typically **0.1s** for a single image on an A100 or RTX 3090 GPU.
 
 ## TODO List
 
 - [x] Release inference code & ViT-Large model.
+- [x] Release evaluation and training code.
 - [ ] Release ViT-Base and ViT-Giant models.
-- [ ] Release evaluation and training code.
 
-🌟*Updated on 2024/11/28* - [CHANGELOG](CHANGELOG.md): 
-  * Supported user-provided camera FOV. 
-  * Added the script for panorama images [scripts/infer_panorama.py](scripts/infer_panorama.py).
+🌟*Updated on 2025/03/18*
+  - Training and evaluation code are released!
+  - Installation via pip is supported. 
 
-## Usage
+## Installation
 
-### Prerequisite
+### Install via pip
+  
+```bash
+pip install git+https://github.com/microsoft/MoGe.git
+```
 
-- Clone this repository. 
-
-    ```bash
-    git clone https://github.com/microsoft/MoGe.git
-    cd MoGe
-    ```
-
-- Python (>= 3.10) environment:
+### Clone this repository. 
+  ```bash
+  git clone https://github.com/microsoft/MoGe.git
+  cd MoGe
+  ```
+  and install the requirements including
   - torch (>= 2.0) and torchvision (compatible with the torch version).
   - other requirements
     ```bash
     pip install -r requirements.txt
     ```
-    MoGe should be compatible with most requirements versions. Please check the `requirements.txt` for more details if you have concerns.
+  MoGe should be compatible with most requirements versions. Please check the `requirements.txt` for more details if you have concerns.
+
+## Usage
 
 ### Pretrained model
 
@@ -64,7 +68,7 @@ Here is a minimal example for loading the model and inferring on a single image.
 ```python
 import cv2
 import torch
-from moge.model import MoGeModel
+from moge.model.v1 import MoGeModel
 
 device = torch.device("cuda")
 
@@ -88,30 +92,37 @@ output = model.infer(input_image)
 # For more usage details, see the `MoGeModel.infer` docstring.
 ```
 
-### Using [scripts/app.py](scripts/app.py) for a web demo
+### Web demo | [`moge/scripts/app.py`](moge/scripts/app.py) 
 
 Make sure that `gradio` is installed and then run the following command to start the web demo:
  
 ```bash
-python scripts/app.py   # --share for Gradio public sharing
+# From command line
+moge app
+
+# In this repo
+python moge/scripts/app.py   # --share for Gradio public sharing
 ```
 
 The web demo is also available at our [Hugging Face space](https://huggingface.co/spaces/Ruicheng/MoGe).
 
 
-### Using [scripts/infer.py](scripts/infer.py)
+### Inference | [`moge/scripts/infer.py`](moge/scripts/infer.py)
 
-Run the script `scripts/infer.py` via the following command:
+Run the script `moge/scripts/infer.py` via the following command:
 
 ```bash
 # Save the output [maps], [glb] and [ply] files
-python scripts/infer.py --input IMAGES_FOLDER_OR_IMAGE_PATH --output OUTPUT_FOLDER --maps --glb --ply
+moge infer --input IMAGES_FOLDER_OR_IMAGE_PATH --output OUTPUT_FOLDER --maps --glb --ply
 
 # Show the result in a window (requires pyglet < 2.0, e.g. pip install pyglet==1.5.29)
-python scripts/infer.py --input IMAGES_FOLDER_OR_IMAGE_PATH --output OUTPUT_FOLDER --show
+moge infer --input IMAGES_FOLDER_OR_IMAGE_PATH --output OUTPUT_FOLDER --show
+
+# Replace "moge infer" with "python moge/scripts/infer.py" if executing from this repo.
+python moge/scripts/infer.py --input IMAGES_FOLDER_OR_IMAGE_PATH --output OUTPUT_FOLDER --maps --glb --ply
 ```
 
-For detailed options, run `python scripts/infer.py --help`:
+For detailed options, run `moge infer --help`:
 
 ```
 Usage: infer.py [OPTIONS]
@@ -125,17 +136,25 @@ Options:
                               horizontal field of view in degrees. Otherwise,
                               MoGe will estimate it.
   --output PATH               Output folder path
-  --pretrained TEXT           Pretrained model name or path. Default is
+  --pretrained TEXT           Pretrained model name or path. Defaults to
                               "Ruicheng/moge-vitl"
   --device TEXT               Device name (e.g. "cuda", "cuda:0", "cpu").
-                              Default is "cuda"
+                              Defaults to "cuda"
   --resize INTEGER            Resize the image(s) & output maps to a specific
-                              size. Default is None (no resizing).
-  --resolution_level INTEGER  An integer [0-9] for the resolution level of
-                              inference. The higher, the better but slower.
-                              Default is 9. Note that it is irrelevant to the
-                              output resolution.
-  --threshold FLOAT           Threshold for removing edges. Default is 0.03.
+                              size. Defaults to None (no resizing).
+  --resolution_level INTEGER  An integer [0-9] for the resolution level for
+                              inference. Higher value means more tokens and
+                              the finer details will be captured, but
+                              inference can be slower. Defaults to 9. Note that
+                              it is irrelevant to the output size, which is
+                              always the same as the input size.
+                              `resolution_level` actually controls
+                              `num_tokens`. See `num_tokens` for more details.
+  --num_tokens INTEGER        number of tokens used for inference. A integer
+                              in the (suggested) range of `[1200, 2500]`.
+                              `resolution_level` will be ignored if
+                              `num_tokens` is provided. Default: None
+  --threshold FLOAT           Threshold for removing edges. Defaults to 0.03.
                               Smaller value removes more edges. "inf" means no
                               thresholding.
   --maps                      Whether to save the output maps and fov(image,
@@ -150,7 +169,7 @@ Options:
   --help                      Show this message and exit.
 ```
 
-### Using [scripts/infer_panorama.py](scripts/infer_panorama.py) for 360° panorama images
+### 360° panorama images | [`moge/scripts/infer_panorama.py`](moge/scripts/infer_panorama.py)
 
 > *NOTE: This is an experimental extension of MoGe.*
 
@@ -165,6 +184,15 @@ Note that the panorama image must have spherical parameterization (e.g., environ
 
 The photo is from [this URL](https://commons.wikimedia.org/wiki/Category:360%C2%B0_panoramas_with_equirectangular_projection#/media/File:Braunschweig_Sankt-%C3%84gidien_Panorama_02.jpg)
 </div>
+
+
+## Training & Finetuning
+
+See [docs/train.md](docs/train.md)
+
+## Evaluation
+
+See [docs/eval.md](docs/eval.md)
 
 ## License
 

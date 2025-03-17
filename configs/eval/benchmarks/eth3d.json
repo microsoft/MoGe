@@ -1,0 +1,10 @@
+{
+    "ETH3D": {
+        "path": "data/eval/ETH3D",
+        "width": 2048,
+        "height": 1365,
+        "split": ".index.txt",
+        "include_segmentation": true,
+        "depth_unit": 1
+    }
+}

@@ -318,9 +318,9 @@ class Sequential(Graph):
         Initialize the pipeline with a list of nodes to execute sequentially.
         ### Parameters:
         - nodes: List of nodes or functions to execute sequentially. Generator functions are wrapped in provider nodes, and other functions are wrapped in worker nodes.
-        - function_running_as: Whether to wrap the function as a thread or process worker. Default is 'thread'.
-        - in_buffer_size: Maximum size of the input queue of the pipeline. Default is 0 (unlimited).
-        - out_buffer_size: Maximum size of the output queue of the pipeline. Default is 0 (unlimited).
+        - function_running_as: Whether to wrap the function as a thread or process worker. Defaults to 'thread'.
+        - in_buffer_size: Maximum size of the input queue of the pipeline. Defaults to 0 (unlimited).
+        - out_buffer_size: Maximum size of the output queue of the pipeline. Defaults to 0 (unlimited).
         """
         super().__init__(in_buffer_size, out_buffer_size)
         for node in nodes:
@@ -417,9 +417,9 @@ class UnorderedParallel(Graph):
         Initialize the pipeline with a list of nodes to execute in parallel. If a function is given, it is wrapped in a worker node.
         ### Parameters:
         - nodes: List of nodes or functions to execute in parallel. Generator functions are wrapped in provider nodes, and other functions are wrapped in worker nodes.
-        - function_running_as: Whether to wrap the function as a thread or process worker. Default is 'thread'.
-        - in_buffer_size: Maximum size of the input queue of the pipeline. Default is 0 (unlimited).
-        - out_buffer_size: Maximum size of the output queue of the pipeline. Default is 0 (unlimited).
+        - function_running_as: Whether to wrap the function as a thread or process worker. Defaults to 'thread'.
+        - in_buffer_size: Maximum size of the input queue of the pipeline. Defaults to 0 (unlimited).
+        - out_buffer_size: Maximum size of the output queue of the pipeline. Defaults to 0 (unlimited).
         """
         super().__init__(in_buffer_size, out_buffer_size)
         for node in nodes:

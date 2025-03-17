@@ -36,3 +36,14 @@ def wrap_dinov2_attention_with_sdpa(module: nn.Module):
             return x
     module.__class__ = _AttentionWrapper
     return module
+
+
+def sync_ddp_hook(state, bucket: torch.distributed.GradBucket) -> torch.futures.Future[torch.Tensor]:
+    group_to_use = torch.distributed.group.WORLD
+    world_size = group_to_use.size()
+    grad = bucket.buffer()
+    grad.div_(world_size)
+    torch.distributed.all_reduce(grad, group=group_to_use)
+    fut = torch.futures.Future()
+    fut.set_result(grad)
+    return fut

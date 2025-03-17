@@ -1,0 +1,9 @@
+{    
+    "KITTI": {
+        "path": "data/eval/KITTI",
+        "width": 750,
+        "height": 375,
+        "split": ".index.txt",
+        "depth_unit": 1
+    }
+}

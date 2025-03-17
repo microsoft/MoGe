@@ -69,6 +69,9 @@ def fov_to_focal(fov: torch.Tensor):
     return 0.5 / torch.tan(fov / 2)
 
 
+def angle_diff_vec3(v1: torch.Tensor, v2: torch.Tensor, eps: float = 1e-12):
+    return torch.atan2(torch.cross(v1, v2, dim=-1).norm(dim=-1) + eps, (v1 * v2).sum(dim=-1))
+
 def intrinsics_to_fov(intrinsics: torch.Tensor):
     """
     Returns field of view in radians from normalized intrinsics matrix.
@@ -120,8 +123,6 @@ def recover_focal_shift(points: torch.Tensor, mask: torch.Tensor = None, focal: 
 
     ### Parameters:
     - `points: torch.Tensor` of shape (..., H, W, 3)
-    - `mask: torch.Tensor` of shape (..., H, W). Optional.
-    - `focal: torch.Tensor` of shape (...). Optional.
     - `downsample_size: Tuple[int, int]` in (height, width), the size of the downsampled map. Downsampling produces approximate solution and is efficient for large maps.
 
     ### Returns:
@@ -149,6 +150,10 @@ def recover_focal_shift(points: torch.Tensor, mask: torch.Tensor = None, focal: 
     for i in range(points.shape[0]):
         points_lr_i_np = points_lr_np[i] if mask is None else points_lr_np[i][mask_lr_np[i]]
         uv_lr_i_np = uv_lr_np if mask is None else uv_lr_np[mask_lr_np[i]]
+        if uv_lr_i_np.shape[0] < 2:
+            optim_focal.append(1)
+            optim_shift.append(0)
+            continue
         if focal is None:
             optim_shift_i, optim_focal_i = solve_optimal_focal_shift(uv_lr_i_np, points_lr_i_np)
             optim_focal.append(float(optim_focal_i))
@@ -165,25 +170,32 @@ def recover_focal_shift(points: torch.Tensor, mask: torch.Tensor = None, focal: 
     return optim_focal, optim_shift
 
 
-def mask_aware_nearest_resize(mask: torch.BoolTensor, target_width: int, target_height: int) -> Tuple[torch.LongTensor, torch.LongTensor, torch.BoolTensor]:
+def mask_aware_nearest_resize(
+    inputs: Union[torch.Tensor, Sequence[torch.Tensor], None],
+    mask: torch.BoolTensor, 
+    size: Tuple[int, int], 
+    return_index: bool = False
+) -> Tuple[Union[torch.Tensor, Sequence[torch.Tensor], None], torch.BoolTensor, Tuple[torch.LongTensor, ...]]:
     """
     Resize 2D map by nearest interpolation. Return the nearest neighbor index and mask of the resized map.
 
     ### Parameters
-    - `mask`: Input 2D mask of shape (..., H, W)
-    - `target_width`: target width of the resized map
-    - `target_height`: target height of the resized map
+    - `inputs`: a single or a list of input 2D map(s) of shape (..., H, W, ...). 
+    - `mask`: input 2D mask of shape (..., H, W)
+    - `size`: target size (target_width, target_height)
 
     ### Returns
-    - `nearest_idx`: Nearest neighbor index of the resized map of shape (..., target_height, target_width) for each dimension
-    - `target_mask`: Mask of the resized map of shape (..., target_height, target_width)
+    - `*resized_maps`: resized map(s) of shape (..., target_height, target_width, ...). 
+    - `resized_mask`: mask of the resized map of shape (..., target_height, target_width)
+    - `nearest_idx`: if return_index is True, nearest neighbor index of the resized map of shape (..., target_height, target_width) for each dimension, .
     """
     height, width = mask.shape[-2:]
+    target_width, target_height = size
     device = mask.device
     filter_h_f, filter_w_f = max(1, height / target_height), max(1, width / target_width)
     filter_h_i, filter_w_i = math.ceil(filter_h_f), math.ceil(filter_w_f)
     filter_size = filter_h_i * filter_w_i
-    padding_h, padding_w = round(filter_h_f / 2), round(filter_w_f / 2)
+    padding_h, padding_w = filter_h_i // 2 + 1, filter_w_i // 2 + 1
 
     # Window the original mask and uv
     uv = utils3d.torch.image_pixel_center(width=width, height=height, dtype=torch.float32, device=device)
@@ -200,12 +212,12 @@ def mask_aware_nearest_resize(mask: torch.BoolTensor, target_width: int, target_
 
     # Gather the target pixels's local window
     target_uv = utils3d.torch.image_uv(width=target_width, height=target_height, dtype=torch.float32, device=device) * torch.tensor([width, height], dtype=torch.float32, device=device)
-    target_corner = target_uv - torch.tensor((filter_w_f / 2, filter_h_f / 2), dtype=torch.float32, device=device)
-    target_corner = torch.round(target_corner - 0.5).long() + torch.tensor((padding_w, padding_h), dtype=torch.long, device=device)
+    target_lefttop = target_uv - torch.tensor((filter_w_f / 2, filter_h_f / 2), dtype=torch.float32, device=device)
+    target_window = torch.round(target_lefttop).long() + torch.tensor((padding_w, padding_h), dtype=torch.long, device=device)
 
-    target_window_uv = windowed_uv[target_corner[..., 1], target_corner[..., 0], :, :, :].reshape(target_height, target_width, 2, filter_size)                          # (target_height, tgt_width, 2, filter_size)
-    target_window_mask = windowed_mask[..., target_corner[..., 1], target_corner[..., 0], :, :].reshape(*mask.shape[:-2], target_height, target_width, filter_size)     # (..., target_height, tgt_width, filter_size)
-    target_window_indices = windowed_indices[target_corner[..., 1], target_corner[..., 0], :, :].reshape(target_height, target_width, filter_size)                      # (target_height, tgt_width, filter_size)
+    target_window_uv = windowed_uv[target_window[..., 1], target_window[..., 0], :, :, :].reshape(target_height, target_width, 2, filter_size)                          # (target_height, tgt_width, 2, filter_size)
+    target_window_mask = windowed_mask[..., target_window[..., 1], target_window[..., 0], :, :].reshape(*mask.shape[:-2], target_height, target_width, filter_size)     # (..., target_height, tgt_width, filter_size)
+    target_window_indices = windowed_indices[target_window[..., 1], target_window[..., 0], :, :].reshape(target_height, target_width, filter_size)                      # (target_height, tgt_width, filter_size)
     target_window_indices = target_window_indices.expand_as(target_window_mask)
 
     # Compute nearest neighbor in the local window for each pixel 
@@ -215,5 +227,97 @@ def mask_aware_nearest_resize(mask: torch.BoolTensor, target_width: int, target_
     target_mask = torch.any(target_window_mask, dim=-1)
     nearest_i, nearest_j = nearest_idx // width, nearest_idx % width
     batch_indices = [torch.arange(n, device=device).reshape([1] * i + [n] + [1] * (mask.dim() - i - 1)) for i, n in enumerate(mask.shape[:-2])]
+    
+    index = (*batch_indices, nearest_i, nearest_j)
+    
+    if inputs is None:
+        outputs = None
+    elif isinstance(inputs, torch.Tensor):
+        outputs = inputs[index]
+    elif isinstance(inputs, Sequence):
+        outputs = tuple(x[index] for x in inputs)
+    else:
+        raise ValueError(f'Invalid input type: {type(inputs)}')
+    
+    if return_index:
+        return outputs, target_mask, index
+    else:
+        return outputs, target_mask
 
-    return (*batch_indices, nearest_i, nearest_j), target_mask
+
+def theshold_depth_change(depth: torch.Tensor, mask: torch.Tensor, pooler: Literal['min', 'max'], rtol: float = 0.2, kernel_size: int = 3):
+    *batch_shape, height, width = depth.shape
+    depth = depth.reshape(-1, 1, height, width)
+    mask = mask.reshape(-1, 1, height, width)
+    if pooler =='max':
+        pooled_depth = F.max_pool2d(torch.where(mask, depth, -torch.inf), kernel_size, stride=1, padding=kernel_size // 2)
+        output_mask = pooled_depth > depth * (1 + rtol)
+    elif pooler =='min':
+        pooled_depth = -F.max_pool2d(-torch.where(mask, depth, torch.inf), kernel_size, stride=1, padding=kernel_size // 2)
+        output_mask =  pooled_depth < depth * (1 - rtol)
+    else:
+        raise ValueError(f'Unsupported pooler: {pooler}')
+    output_mask = output_mask.reshape(*batch_shape, height, width)
+    return output_mask
+
+
+def depth_occlusion_edge(depth: torch.FloatTensor, mask: torch.BoolTensor, kernel_size: int = 3, tol: float = 0.1):
+    device, dtype = depth.device, depth.dtype
+
+    disp = torch.where(mask, 1 / depth, 0)
+    disp_pad = F.pad(disp, (kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2), value=0)
+    mask_pad = F.pad(mask, (kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2), value=False)
+    disp_window = utils3d.torch.sliding_window_2d(disp_pad, (kernel_size, kernel_size), 1, dim=(-2, -1)).flatten(-2)  # [..., H, W, kernel_size ** 2]
+    mask_window = utils3d.torch.sliding_window_2d(mask_pad, (kernel_size, kernel_size), 1, dim=(-2, -1)).flatten(-2)            # [..., H, W, kernel_size ** 2]
+
+    x = torch.linspace(-kernel_size // 2, kernel_size // 2, kernel_size, device=device, dtype=dtype)
+    A = torch.stack([*torch.meshgrid(x, x, indexing='xy'), torch.ones((kernel_size, kernel_size), device=device, dtype=dtype)], dim=-1).reshape(kernel_size ** 2, 3)        # [kernel_size ** 2, 3]
+    A = mask_window[..., None] * A
+    I = torch.eye(3, device=device, dtype=dtype)
+    
+    affine_disp_window = (disp_window[..., None, :] @ A @ torch.inverse(A.mT @ A + 1e-5 * I) @ A.mT).clamp_min(1e-12)[..., 0, :]  # [..., H, W, kernel_size ** 2]
+    diff = torch.where(mask_window, torch.maximum(affine_disp_window, disp_window) / torch.minimum(affine_disp_window, disp_window) - 1, 0)
+
+    edge_mask = mask & (diff > tol).any(dim=-1)
+
+    disp_mean = weighted_mean(disp_window, mask_window, dim=-1)
+    fg_edge_mask = edge_mask & (disp > disp_mean)
+    # fg_edge_mask = edge_mask & theshold_depth_change(depth, mask, pooler='max', rtol=tol, kernel_size=kernel_size)
+    bg_edge_mask = edge_mask & ~fg_edge_mask
+    return fg_edge_mask, bg_edge_mask
+
+
+def depth_occlusion_edge(depth: torch.FloatTensor, mask: torch.BoolTensor, kernel_size: int = 3, tol: float = 0.1):
+    device, dtype = depth.device, depth.dtype
+
+    disp = torch.where(mask, 1 / depth, 0)
+    disp_pad = F.pad(disp, (kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2), value=0)
+    mask_pad = F.pad(mask, (kernel_size // 2, kernel_size // 2, kernel_size // 2, kernel_size // 2), value=False)
+    disp_window = utils3d.torch.sliding_window_2d(disp_pad, (kernel_size, kernel_size), 1, dim=(-2, -1))  # [..., H, W, kernel_size ** 2]
+    mask_window = utils3d.torch.sliding_window_2d(mask_pad, (kernel_size, kernel_size), 1, dim=(-2, -1))  # [..., H, W, kernel_size ** 2]
+
+    disp_mean = weighted_mean(disp_window, mask_window, dim=(-2, -1))
+    fg_edge_mask = mask & (disp / disp_mean > 1 + tol)
+    bg_edge_mask = mask & (disp_mean / disp > 1 + tol)
+
+    fg_edge_mask = fg_edge_mask & F.max_pool2d(bg_edge_mask.float(), kernel_size + 2, stride=1, padding=kernel_size // 2 + 1).bool()
+    bg_edge_mask = bg_edge_mask & F.max_pool2d(fg_edge_mask.float(), kernel_size + 2, stride=1, padding=kernel_size // 2 + 1).bool()
+
+    return fg_edge_mask, bg_edge_mask
+
+
+def dilate_with_mask(input: torch.Tensor, mask: torch.BoolTensor, filter: Literal['min', 'max', 'mean', 'median'] = 'mean', iterations: int = 1) -> torch.Tensor:
+    kernel = torch.tensor([[False, True, False], [True, True, True], [False, True, False]], device=input.device, dtype=torch.bool)
+    for _ in range(iterations):
+        input_window = utils3d.torch.sliding_window_2d(F.pad(input, (1, 1, 1, 1), mode='constant', value=0), window_size=3, stride=1, dim=(-2, -1))
+        mask_window = kernel & utils3d.torch.sliding_window_2d(F.pad(mask, (1, 1, 1, 1), mode='constant', value=False), window_size=3, stride=1, dim=(-2, -1))    
+        if filter =='min':
+            input = torch.where(mask, input, torch.where(mask_window, input_window, torch.inf).min(dim=(-2, -1)).values)
+        elif filter =='max':
+            input = torch.where(mask, input, torch.where(mask_window, input_window, -torch.inf).max(dim=(-2, -1)).values)
+        elif filter == 'mean':
+            input = torch.where(mask, input, torch.where(mask_window, input_window, torch.nan).nanmean(dim=(-2, -1)))
+        elif filter =='median':
+            input = torch.where(mask, input, torch.where(mask_window, input_window, torch.nan).flatten(-2).nanmedian(dim=-1).values)
+        mask = mask_window.any(dim=(-2, -1))
+    return input, mask
