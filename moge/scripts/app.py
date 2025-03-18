@@ -10,24 +10,7 @@ from typing import *
 import atexit
 from concurrent.futures import ThreadPoolExecutor
 
-import gradio as gr
-import cv2
-import torch
-import numpy as np
 import click
-import trimesh
-import trimesh.visual
-from PIL import Image
-
-from moge.model.v1 import MoGeModel
-from moge.utils.vis import colorize_depth
-import utils3d
-
-try:
-    import spaces   # This is for deployment at huggingface.co/spaces
-    HUGGINFACE_SPACES_INSTALLED = True
-except ImportError:
-    HUGGINFACE_SPACES_INSTALLED = False
 
 
 @click.command(help='Web demo')
@@ -35,6 +18,25 @@ except ImportError:
 @click.option('--max_size', default=800, type=int, help='The maximum size of the input image.')
 @click.option('--pretrained', 'pretrained_model_name_or_path', default='Ruicheng/moge-vitl', help='The name or path of the pre-trained model.')
 def main(share: bool, max_size: int, pretrained_model_name_or_path: str):
+    # Lazy import
+    import cv2
+    import torch
+    import numpy as np
+    import trimesh
+    import trimesh.visual
+    from PIL import Image
+    import gradio as gr
+    try:
+        import spaces   # This is for deployment at huggingface.co/spaces
+        HUGGINFACE_SPACES_INSTALLED = True
+    except ImportError:
+        HUGGINFACE_SPACES_INSTALLED = False
+
+    import utils3d
+    from moge.utils.vis import colorize_depth
+    from moge.model.v1 import MoGeModel
+
+
     model = MoGeModel.from_pretrained(pretrained_model_name_or_path).cuda().eval()
     thread_pool_executor = ThreadPoolExecutor(max_workers=1)
 
@@ -72,6 +74,8 @@ def main(share: bool, max_size: int, pretrained_model_name_or_path: str):
         output = run_with_gpu(image)
         points, depth, mask = output['points'], output['depth'], output['mask']
         normals, normals_mask = utils3d.numpy.points_to_normals(points, mask=mask)
+        fov_x, fov_y = utils3d.numpy.intrinsics_to_fov(output['intrinsics'])
+        fov_x, fov_y = np.rad2deg([fov_x, fov_y])
 
         faces, vertices, vertex_colors, vertex_uvs = utils3d.numpy.image_mesh(
             points,
@@ -115,7 +119,12 @@ def main(share: bool, max_size: int, pretrained_model_name_or_path: str):
         delete_later(output_glb_path, delay=300)
         delete_later(output_ply_path, delay=300)
             
-        return colorized_depth, output_glb_path, output_ply_path.as_posix()
+        return (
+            colorized_depth, 
+            output_glb_path, 
+            output_ply_path.as_posix(),
+            f'Horizontal FOV: {fov_x:.2f}, Vertical FOV: {fov_y:.2f}'
+        )
 
     gr.Interface(
         fn=run,
@@ -127,6 +136,7 @@ def main(share: bool, max_size: int, pretrained_model_name_or_path: str):
             gr.Image(type="numpy", label="Depth map (colorized)", format='png'),
             gr.Model3D(display_mode="solid", clear_color=[1.0, 1.0, 1.0, 1.0], label="3D Viewer"),
             gr.File(type="filepath", label="Download the model as .ply file"),
+            gr.Textbox('--', label="FOV (Horizontal, Vertical)")
         ],
         title=None,
         description=f"""

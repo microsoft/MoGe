@@ -24,7 +24,8 @@ dependencies = [
     "numpy",
     "torch>=2.0.0",
     "torchvision",
-    "utils3d @ git+https://github.com/EasternJournalist/utils3d.git@db0c68cbdc9a26bea1a580a2e39c6b8ff12f87b5"
+    "gradio",
+    "utils3d @ git+https://github.com/EasternJournalist/utils3d.git@3913c65d81e05e47b9f367250cf8c0f7462a0900"
 ]
 requires-python = ">=3.9"
 

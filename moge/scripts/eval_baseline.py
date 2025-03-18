@@ -8,20 +8,7 @@ from typing import *
 import importlib
 import importlib.util
 
-import  cv2
-import numpy as np
 import click
-from tqdm import tqdm
-import torch
-import torch.nn.functional as F
-import utils3d
-
-from moge.test.baseline import MGEBaselineInterface
-from moge.test.dataloader import EvalDataLoaderPipeline
-from moge.test.metrics import compute_metrics
-from moge.utils.geometry_torch import intrinsics_to_fov
-from moge.utils.vis import colorize_depth, colorize_normal
-from moge.utils.tools import key_average, flatten_nested_dict, timeit, import_file_as_module
 
 
 @click.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True}, help='Evaluation script.')
@@ -34,6 +21,21 @@ from moge.utils.tools import key_average, flatten_nested_dict, timeit, import_fi
 @click.option('--dump_gt', is_flag=True, help='Dump ground truth.')
 @click.pass_context
 def main(ctx: click.Context, baseline_code_path: str, config_path: str, oracle_mode: bool, output_path: Union[str, Path], dump_pred: bool, dump_gt: bool):
+    # Lazy import
+    import  cv2
+    import numpy as np
+    from tqdm import tqdm
+    import torch
+    import torch.nn.functional as F
+    import utils3d
+
+    from moge.test.baseline import MGEBaselineInterface
+    from moge.test.dataloader import EvalDataLoaderPipeline
+    from moge.test.metrics import compute_metrics
+    from moge.utils.geometry_torch import intrinsics_to_fov
+    from moge.utils.vis import colorize_depth, colorize_normal
+    from moge.utils.tools import key_average, flatten_nested_dict, timeit, import_file_as_module
+    
     # Load the baseline model
     module = import_file_as_module(baseline_code_path, Path(baseline_code_path).stem)
     baseline_cls: Type[MGEBaselineInterface] = getattr(module, 'Baseline')

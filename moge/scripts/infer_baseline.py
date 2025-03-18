@@ -9,18 +9,7 @@ from pathlib import Path
 from typing import *
 import itertools
 
-import  cv2
-import numpy as np
 import click
-from tqdm import tqdm
-import torch
-import utils3d
-
-from moge.utils.io import save_ply, save_glb
-from moge.utils.geometry_numpy import intrinsics_to_fov_numpy
-from moge.utils.vis import colorize_depth, colorize_depth_affine, colorize_disparity
-from moge.utils.tools import key_average, flatten_nested_dict, timeit, import_file_as_module
-from moge.test.baseline import MGEBaselineInterface
 
 
 @click.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True}, help='Inference script for wrapped baselines methods')
@@ -35,6 +24,19 @@ from moge.test.baseline import MGEBaselineInterface
 @click.option('--threshold', type=float, default=0.03, help='Depth edge detection threshold for saving mesh')
 @click.pass_context
 def main(ctx: click.Context, baseline_code_path: str, input_path: str, output_path: str, image_size: int, skip: bool, save_maps_, save_ply_: bool, save_glb_: bool, threshold: float):
+    # Lazy import
+    import  cv2
+    import numpy as np
+    from tqdm import tqdm
+    import torch
+    import utils3d
+
+    from moge.utils.io import save_ply, save_glb
+    from moge.utils.geometry_numpy import intrinsics_to_fov_numpy
+    from moge.utils.vis import colorize_depth, colorize_depth_affine, colorize_disparity
+    from moge.utils.tools import key_average, flatten_nested_dict, timeit, import_file_as_module
+    from moge.test.baseline import MGEBaselineInterface
+
     # Load the baseline model
     module = import_file_as_module(baseline_code_path, Path(baseline_code_path).stem)
     baseline_cls: Type[MGEBaselineInterface] = getattr(module, 'Baseline')

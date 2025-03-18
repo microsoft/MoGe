@@ -45,7 +45,7 @@ somedataset
 We provide a script to visualize the data and check the data quality. It will export the instance as a PLY file for visualization of point cloud.
 
 ```bash
-python scripts/vis_data.py PATH_TO_INSTANCE --ply 
+python moge/scripts/vis_data.py PATH_TO_INSTANCE --ply [-o SOMEWHERE_ELSE_TO_SAVE_VIS]
 ```
 
 ### DataLoader
