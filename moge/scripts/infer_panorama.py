@@ -14,7 +14,7 @@ import click
          
 @click.command(help='Inference script for panorama images')
 @click.option('--input', '-i', 'input_path', type=click.Path(exists=True), required=True, help='Input image or folder path. "jpg" and "png" are supported.')
-@click.option('--output', '-o', 'output_path', type=click.Path(), required=True, help='Output folder path')
+@click.option('--output', '-o', 'output_path', type=click.Path(), default='./output', help='Output folder path')
 @click.option('--pretrained', 'pretrained_model_name_or_path', type=str, default='Ruicheng/moge-vitl', help='Pretrained model name or path. Defaults to "Ruicheng/moge-vitl"')
 @click.option('--device', 'device_name', type=str, default='cuda', help='Device name (e.g. "cuda", "cuda:0", "cpu"). Defaults to "cuda"')
 @click.option('--resize', 'resize_to', type=int, default=None, help='Resize the image(s) & output maps to a specific size. Defaults to None (no resizing).')
@@ -72,8 +72,10 @@ def main(
     if len(image_paths) == 0:
         raise FileNotFoundError(f'No image files found in {input_path}')
 
+    # Write outputs
     if not any([save_maps_, save_glb_, save_ply_]):
-        warnings.warn('No output format specified. Please use "--maps", "--glb", or "--ply" to specify the output.')
+        warnings.warn('No output format specified. Defaults to saving all. Please use "--maps", "--glb", or "--ply" to specify the output.')
+        save_maps_ = save_glb_ = save_ply_ = True
 
     model = MoGeModel.from_pretrained(pretrained_model_name_or_path).to(device).eval()
 

@@ -1,10 +1,10 @@
 # Evaluation
 
-We provide a common evaluation script to evaluate on a set of benchmarks and baselines.
+We provide a unified evaluation script that runs baselines on multiple benchmarks. It takes a baseline model and evaluation configurations, evaluates on-the-fly, and reports results instantly in a JSON file.
 
 ## Benchmarks
 
-Coming soon on Huggingface datasets.
+Coming soon on Huggingface Datasets.
 
 ## Wrap a Baseline
 
@@ -18,9 +18,11 @@ python moge/scripts/infer_baselines.py --baseline baselines/moge.py --input exam
 ```
 The `--baselies` `--input` `--output` arguments are for the inference script. The rest arguments are custormized for loading the baseline model.
 
+See [`baselines/`](../baselines/) for more examples.
+
 ## Run
 
-Use the script [`moge/scripts/eval_baseline.py`](../moge/scripts/eval_baseline.py). It will run the model 
+Use the script [`moge/scripts/eval_baseline.py`](../moge/scripts/eval_baseline.py). 
 
 ```
 Usage: eval_baseline.py [OPTIONS]

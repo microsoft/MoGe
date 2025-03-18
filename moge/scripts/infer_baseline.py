@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 from typing import *
 import itertools
+import warnings
 
 import click
 
@@ -15,7 +16,7 @@ import click
 @click.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True}, help='Inference script for wrapped baselines methods')
 @click.option('--baseline', 'baseline_code_path', required=True, type=click.Path(), help='Path to the baseline model python code.')
 @click.option('--input', '-i', 'input_path', type=str, required=True, help='Input image or folder')
-@click.option('--output', '-o', 'output_path', type=str, default='infer_output/', help='Output folder')
+@click.option('--output', '-o', 'output_path', type=str, default='./output', help='Output folder')
 @click.option('--size', 'image_size', type=int, default=None, help='Resize input image')
 @click.option('--skip', is_flag=True, help='Skip existing output')
 @click.option('--maps', 'save_maps_', is_flag=True, help='Save output point / depth maps')
@@ -49,6 +50,10 @@ def main(ctx: click.Context, baseline_code_path: str, input_path: str, output_pa
     else:
         image_paths = [Path(input_path)]
     
+    if not any([save_maps_, save_glb_, save_ply_]):
+        warnings.warn('No output format specified. Defaults to saving maps only. Please use "--maps", "--glb", or "--ply" to specify the output.')
+        save_maps_ = True
+
     for image_path in (pbar := tqdm(image_paths, desc='Inference', disable=len(image_paths) <= 1)):
         # Load one image at a time  
         image_np = cv2.cvtColor(cv2.imread(str(image_path)), cv2.COLOR_BGR2RGB)
@@ -85,7 +90,7 @@ def main(ctx: click.Context, baseline_code_path: str, input_path: str, output_pa
                     points = output[k].cpu().numpy()
                     cv2.imwrite(str(save_path / f'{k}.exr'), cv2.cvtColor(points, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_FLOAT])
 
-            for k in ['depth_metric', 'depth_scale_invariant', 'depth_affine_invariant', 'disparity']:
+            for k in ['depth_metric', 'depth_scale_invariant', 'depth_affine_invariant', 'disparity_affine_invariant']:
                 if k in output:
                     depth = output[k].cpu().numpy()
                     cv2.imwrite(str(save_path / f'{k}.exr'), depth, [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_FLOAT])

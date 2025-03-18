@@ -27,9 +27,10 @@ import utils3d
 @click.command(help='Inference script')
 @click.option('--input', '-i', 'input_path', type=click.Path(exists=True), help='Input image or folder path. "jpg" and "png" are supported.')
 @click.option('--fov_x', 'fov_x_', type=float, default=None, help='If camera parameters are known, set the horizontal field of view in degrees. Otherwise, MoGe will estimate it.')
-@click.option('--output', '-o', 'output_path', type=click.Path(), help='Output folder path')
+@click.option('--output', '-o', 'output_path', default='./output', type=click.Path(), help='Output folder path')
 @click.option('--pretrained', 'pretrained_model_name_or_path', type=str, default='Ruicheng/moge-vitl', help='Pretrained model name or path. Defaults to "Ruicheng/moge-vitl"')
 @click.option('--device', 'device_name', type=str, default='cuda', help='Device name (e.g. "cuda", "cuda:0", "cpu"). Defaults to "cuda"')
+@click.option('--fp16', 'use_fp16', is_flag=True, help='Use fp16 precision for 2x faster inference.')
 @click.option('--resize', 'resize_to', type=int, default=None, help='Resize the image(s) & output maps to a specific size. Defaults to None (no resizing).')
 @click.option('--resolution_level', type=int, default=9, help='An integer [0-9] for the resolution level for inference. \
 Higher value means more tokens and the finer details will be captured, but inference can be slower. \
@@ -48,6 +49,7 @@ def main(
     output_path: str,
     pretrained_model_name_or_path: str,
     device_name: str,
+    use_fp16: bool,
     resize_to: int,
     resolution_level: int,
     num_tokens: int,
@@ -70,6 +72,11 @@ def main(
 
     model = MoGeModel.from_pretrained(pretrained_model_name_or_path).to(device).eval()
 
+    
+    if not any([save_maps_, save_glb_, save_ply_]):
+        warnings.warn('No output format specified. Defaults to saving all. Please use "--maps", "--glb", or "--ply" to specify the output.')
+        save_maps_ = save_glb_ = save_ply_ = True
+
     for image_path in (pbar := tqdm(image_paths, desc='Inference', disable=len(image_paths) <= 1)):
         image = cv2.cvtColor(cv2.imread(str(image_path)), cv2.COLOR_BGR2RGB)
         height, width = image.shape[:2]
@@ -79,17 +86,14 @@ def main(
         image_tensor = torch.tensor(image / 255, dtype=torch.float32, device=device).permute(2, 0, 1)
 
         # Inference
-        output = model.infer(image_tensor, fov_x=fov_x_, resolution_level=resolution_level, num_tokens=num_tokens)
+        output = model.infer(image_tensor, fov_x=fov_x_, resolution_level=resolution_level, num_tokens=num_tokens, use_fp16=use_fp16)
         points, depth, mask, intrinsics = output['points'].cpu().numpy(), output['depth'].cpu().numpy(), output['mask'].cpu().numpy(), output['intrinsics'].cpu().numpy()
         normals, normals_mask = utils3d.numpy.points_to_normals(points, mask=mask)
-
-        # Write outputs
-        if not any([save_maps_, save_glb_, save_ply_]):
-            warnings.warn('No output format specified. Please use "--maps", "--glb", or "--ply" to specify the output.')
 
         save_path = Path(output_path, image_path.relative_to(input_path).parent, image_path.stem)
         save_path.mkdir(exist_ok=True, parents=True)
 
+        # Save images / maps
         if save_maps_:
             cv2.imwrite(str(save_path / 'image.jpg'), cv2.cvtColor(image, cv2.COLOR_RGB2BGR))
             cv2.imwrite(str(save_path / 'depth_vis.png'), cv2.cvtColor(colorize_depth(depth), cv2.COLOR_RGB2BGR))

@@ -146,7 +146,7 @@ We use [`accelerate`](https://github.com/huggingface/accelerate) for distributed
 ```bash
 accelerate launch \
     --num_processes 8 \
-    scripts/train.py \
+    moge/scripts/train.py \
     --config configs/train/v1.json \
     --workspace workspace/debug \
     --gradient_accumulation_steps 2 \
@@ -170,7 +170,7 @@ The settings in default configuration are not optimal for specific datasets and 
 ```bash
 accelerate launch \
     --num_processes 8 \
-    scripts/train.py \
+    moge/scripts/train.py \
     --config configs/train/v1.json \
     --workspace workspace/debug \
     --gradient_accumulation_steps 2 \
