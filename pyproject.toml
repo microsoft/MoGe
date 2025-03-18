@@ -8,11 +8,6 @@ version = "1.0.0"
 description = "MoGe: Unlocking Accurate Monocular Geometry Estimation for Open-Domain Images with Optimal Training Supervision"
 readme = "README.md"
 license = {text = "MIT"}
-classifiers = [
-    "Programming Language :: Python :: 3",
-    "License :: OSI Approved :: MIT License",
-    "Operating System :: OS Independent"
-]
 dependencies = [
     "click",
     "opencv-python",

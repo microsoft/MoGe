@@ -74,8 +74,8 @@ Here is a commented configuration for reference:
                 "path": "data/TartanAir",               # Path to the dataset
                 "label_type": "synthetic",              # Label type for this dataset. Losses will be applied accordingly. see "loss" config
                 "weight": 4.8,                          # Probability of sampling this dataset
-                "index": ".index.txt",                  # File name of the index file.  Default .index.txt
-                "depth": "depth.png",                   # File name of depth images. Default depth.png
+                "index": ".index.txt",                  # File name of the index file.  Defaults to .index.txt
+                "depth": "depth.png",                   # File name of depth images. Defaults to depth.png
                 "center_augmentation": 0.25,            # Below are dataset-specific hyperparameters. Overriding the global ones above.
                 "fov_range_absolute": [30, 150],
                 "fov_range_relative": [0.5, 1.0],

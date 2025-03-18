@@ -18,8 +18,8 @@ MoGe is a powerful model for recovering 3D geometry from monocular open-domain i
 
 * **Accurate 3D geometry estimation**: Estimate point maps from single images with high precision. Capable of capturing depth variations up to 1000×, ensuring a comprehensive scene representation.
 * **Optional ground-truth FOV input**: Enhance model accuracy further by providing the true field of view.
-* **Flexible resolution support**: Works seamlessly with images of various resolutions and aspect ratios, from 2:1 to 1:2.
-* **Optimized for speed**: Achieves <0.1s inference per image on an A100 / RTX 3090 GPU with fp16, and 0.2s with fp32.
+* **Flexible resolution support**: Works seamlessly with various resolutions and aspect ratios, from 2:1 to 1:2.
+* **Optimized for speed**: Achieves <0.1s latency per image on an A100 / RTX 3090 GPU with fp16, and 0.2s with fp32.
 
 ## TODO List
 
@@ -27,9 +27,9 @@ MoGe is a powerful model for recovering 3D geometry from monocular open-domain i
 - [x] Release evaluation and training code.
 - [ ] Release ViT-Base and ViT-Giant models.
 
-🌟*Updated on 2025/03/18*
-  - Training and evaluation code released!
-  - Installation via pip supported. 
+🌟*Updated on 2025/03/18* [CHANGELOG](CHANGELOG.md)
+  - **Training and evaluation code released!**
+  - Installation via pip and CLI usage supported. 
 
 ## Installation
 
