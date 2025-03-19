@@ -46,7 +46,7 @@ git clone https://github.com/microsoft/MoGe.git
 cd MoGe
 ```
 
-and install the requirements including
+and install the requirements
 
 ```bash
 pip install -r requirements.txt

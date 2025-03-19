@@ -140,8 +140,7 @@ Here is a commented configuration for reference:
 
 ## Run Training 
 
-We use [`accelerate`](https://github.com/huggingface/accelerate) for distributed training. 
-
+Launch the training script [`moge/scripts/train.py`](../moge/scripts/train.py). Note that we use [`accelerate`](https://github.com/huggingface/accelerate) for distributed training. 
 
 ```bash
 accelerate launch \
