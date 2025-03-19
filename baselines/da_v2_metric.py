@@ -61,8 +61,11 @@ class Baseline(MGEBaselineInterface):
         return Baseline(repo_path, backbone, domain, num_tokens, device)
 
     @torch.inference_mode()
-    def infer(self, image: torch.Tensor):
+    def infer(self, image: torch.Tensor, intrinsics: Optional[torch.Tensor] = None) -> Dict[str, torch.Tensor]:
         original_height, original_width = image.shape[-2:]
+
+        assert intrinsics is None, "Depth-Anything-V2 does not support camera intrinsics input"
+
         if image.ndim == 3:
             image = image.unsqueeze(0)
             omit_batch_dim = True
