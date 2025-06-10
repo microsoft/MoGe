@@ -20,7 +20,8 @@ import click
 @click.option('--share', is_flag=True, help='Whether to run the app in shared mode.')
 @click.option('--pretrained', 'pretrained_model_name_or_path', default=None, help='The name or path of the pre-trained model.')
 @click.option('--version', 'model_version', default='v2', help='The version of the model.')
-def main(share: bool, pretrained_model_name_or_path: str, model_version: str):
+@click.option('--fp16', 'use_fp16', is_flag=True, help='Whether to use fp16 inference.')
+def main(share: bool, pretrained_model_name_or_path: str, model_version: str, use_fp16: bool):
     print("Import modules...")
     # Lazy import
     import cv2
@@ -51,7 +52,8 @@ def main(share: bool, pretrained_model_name_or_path: str, model_version: str):
         }
         pretrained_model_name_or_path = DEFAULT_PRETRAINED_MODEL_FOR_EACH_VERSION[model_version]
     model = import_model_class_by_version(model_version).from_pretrained(pretrained_model_name_or_path).cuda().eval()
-    model.half()
+    if use_fp16:
+        model.half()
     thread_pool_executor = ThreadPoolExecutor(max_workers=1)
 
     def delete_later(path: Union[str, os.PathLike], delay: int = 300):
@@ -69,8 +71,8 @@ def main(share: bool, pretrained_model_name_or_path: str, model_version: str):
     # Inference on GPU. 
     @(spaces.GPU if HUGGINFACE_SPACES_INSTALLED else lambda x: x)
     def run_with_gpu(image: np.ndarray, resolution_level: int, apply_mask: bool) -> Dict[str, np.ndarray]:
-        image_tensor = torch.tensor(image, dtype=torch.float32, device=torch.device('cuda')).permute(2, 0, 1) / 255
-        output = model.infer(image_tensor, apply_mask=apply_mask, resolution_level=resolution_level, use_fp16=True)
+        image_tensor = torch.tensor(image, dtype=torch.float32 if not use_fp16 else torch.float16, device=torch.device('cuda')).permute(2, 0, 1) / 255
+        output = model.infer(image_tensor, apply_mask=apply_mask, resolution_level=resolution_level, use_fp16=use_fp16)
         output = {k: v.cpu().numpy() for k, v in output.items()}
         return output
 
