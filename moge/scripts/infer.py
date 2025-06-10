@@ -62,6 +62,7 @@ def main(
     from moge.model import import_model_class_by_version
     from moge.utils.io import save_glb, save_ply
     from moge.utils.vis import colorize_depth, colorize_normal
+    from moge.utils.geometry_numpy import depth_occlusion_edge_numpy
     import utils3d
 
     device = torch.device(device_name)
@@ -123,7 +124,7 @@ def main(
 
         # Export mesh & visulization
         if save_glb_ or save_ply_ or show:
-            mask_cleaned = mask & ~(utils3d.numpy.depth_edge(depth, rtol=threshold, mask=mask) & utils3d.numpy.normals_edge(points_normal, tol=5, mask=points_normal_mask))
+            mask_cleaned = mask & ~depth_occlusion_edge_numpy(depth, mask, tol=2 / max(image.shape[:2]), thickness=2)
             if normal is None:
                 faces, vertices, vertex_colors, vertex_uvs = utils3d.numpy.image_mesh(
                     points,
@@ -153,7 +154,7 @@ def main(
             save_glb(save_path / 'mesh.glb', vertices, faces, vertex_uvs, image, vertex_normals)
 
         if save_ply_:
-            save_ply(save_path / 'pointcloud.ply', vertices, [], vertex_colors, vertex_normals)
+            save_ply(save_path / 'pointcloud.ply', vertices, np.zeros((0, 3), dtype=np.int32), vertex_colors, vertex_normals)
 
         if show:
             trimesh.Trimesh(
