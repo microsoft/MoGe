@@ -288,17 +288,22 @@ def norm3d(x: np.ndarray) -> np.ndarray:
     return np.sqrt(np.square(x[..., 0]) + np.square(x[..., 1]) + np.square(x[..., 2]))
     
 
-def depth_occlusion_edge_numpy(depth: np.ndarray, mask: np.ndarray, kernel_size: int = 3, tol: float = 0.1):
+def depth_occlusion_edge_numpy(depth: np.ndarray, mask: np.ndarray, thickness: int = 1, tol: float = 0.1):
     disp = np.where(mask, 1 / depth, 0)
-    disp_pad = np.pad(disp, (kernel_size // 2, kernel_size // 2), constant_values=0)
-    mask_pad = np.pad(mask, (kernel_size // 2, kernel_size // 2), constant_values=False)
+    disp_pad = np.pad(disp, (thickness, thickness), constant_values=0)
+    mask_pad = np.pad(mask, (thickness, thickness), constant_values=False)
+    kernel_size = 2 * thickness + 1
     disp_window = utils3d.numpy.sliding_window_2d(disp_pad, (kernel_size, kernel_size), 1, axis=(-2, -1))  # [..., H, W, kernel_size ** 2]
     mask_window = utils3d.numpy.sliding_window_2d(mask_pad, (kernel_size, kernel_size), 1, axis=(-2, -1))  # [..., H, W, kernel_size ** 2]
 
     disp_mean = weighted_mean_numpy(disp_window, mask_window, axis=(-2, -1))
     fg_edge_mask = mask & (disp > (1 + tol) * disp_mean)
     bg_edge_mask = mask & (disp_mean > (1 + tol) * disp)
-    return fg_edge_mask, bg_edge_mask
+
+    edge_mask = (cv2.dilate(fg_edge_mask.astype(np.uint8), np.ones((3, 3), dtype=np.uint8), iterations=thickness) > 0) \
+        & (cv2.dilate(bg_edge_mask.astype(np.uint8), np.ones((3, 3), dtype=np.uint8), iterations=thickness) > 0)
+
+    return edge_mask
 
 
 def disk_kernel(radius: int) -> np.ndarray:

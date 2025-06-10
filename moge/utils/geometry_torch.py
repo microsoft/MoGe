@@ -321,3 +321,34 @@ def dilate_with_mask(input: torch.Tensor, mask: torch.BoolTensor, filter: Litera
             input = torch.where(mask, input, torch.where(mask_window, input_window, torch.nan).flatten(-2).nanmedian(dim=-1).values)
         mask = mask_window.any(dim=(-2, -1))
     return input, mask
+
+
+def refine_depth_with_normal(depth: torch.Tensor, normal: torch.Tensor, intrinsics: torch.Tensor, iterations: int = 10, damp: float = 1e-3, eps: float = 1e-12, kernel_size: int = 5) -> torch.Tensor:
+    device, dtype = depth.device, depth.dtype
+    height, width = depth.shape[-2:]
+    radius = kernel_size // 2
+
+    duv = torch.stack(torch.meshgrid(torch.linspace(-radius / width, radius / width, kernel_size, device=device, dtype=dtype), torch.linspace(-radius / height, radius / height, kernel_size, device=device, dtype=dtype), indexing='xy'), dim=-1).to(dtype=dtype, device=device)
+
+    log_depth = depth.clamp_min_(eps).log()
+    log_depth_diff = utils3d.torch.sliding_window_2d(log_depth, window_size=kernel_size, stride=1, dim=(-2, -1)) - log_depth[..., radius:-radius, radius:-radius, None, None] 
+    
+    weight = torch.exp(-(log_depth_diff / duv.norm(dim=-1).clamp_min_(eps) / 10).square())
+    tot_weight = weight.sum(dim=(-2, -1)).clamp_min_(eps)
+
+    uv = utils3d.torch.image_uv(height=height, width=width, device=device, dtype=dtype)
+    K_inv = torch.inverse(intrinsics)
+
+    grad = -(normal[..., None, :2] @ K_inv[..., None, None, :2, :2]).squeeze(-2) \
+            / (normal[..., None, 2:] + normal[..., None, :2] @ (K_inv[..., None, None, :2, :2] @ uv[..., :, None] + K_inv[..., None, None, :2, 2:])).squeeze(-2)
+    laplacian = (weight * ((utils3d.torch.sliding_window_2d(grad, window_size=kernel_size, stride=1, dim=(-3, -2)) + grad[..., radius:-radius, radius:-radius, :, None, None]) * (duv.permute(2, 0, 1) / 2)).sum(dim=-3)).sum(dim=(-2, -1))
+    
+    laplacian = laplacian.clamp(-0.1, 0.1)
+    log_depth_refine = log_depth.clone()
+
+    for _ in range(iterations):
+        log_depth_refine[..., radius:-radius, radius:-radius] = 0.1 * log_depth_refine[..., radius:-radius, radius:-radius] + 0.9 * (damp * log_depth[..., radius:-radius, radius:-radius] - laplacian + (weight * utils3d.torch.sliding_window_2d(log_depth_refine, window_size=kernel_size, stride=1, dim=(-2, -1))).sum(dim=(-2, -1))) / (tot_weight + damp) 
+
+    depth_refine = log_depth_refine.exp()
+
+    return depth_refine

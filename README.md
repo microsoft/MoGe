@@ -6,6 +6,7 @@
 <a href='https://wangrc.site/MoGePage/'><img src='https://img.shields.io/badge/Project_Page-Website-green?logo=googlechrome&logoColor=white' alt='Project Page'></a>
 <a href='https://huggingface.co/spaces/Ruicheng/MoGe'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Live_Demo-blue'></a>
 
+
 </div>
 
 <img src="./assets/overview_simplified.png" width="100%" alt="Method overview" align="center">
@@ -14,24 +15,27 @@ MoGe is a powerful model for recovering 3D geometry from monocular open-domain i
 
 ***Check our [website](https://wangrc.site/MoGePage) for videos and interactive results!***
 
-## Features
+## 🌟 Features
 
-* **Accurate 3D geometry estimation**: Estimate point maps from single images with high precision. Capable of capturing depth variations up to 1000×, ensuring a comprehensive scene representation.
+* **Accurate 3D geometry estimation**: Estimate point maps from open-domain  single images with high precision. ***❗<span style='color:red'>New:</span> MoGe-2 estimates the point map in metric scale.***
+
 * **Optional ground-truth FOV input**: Enhance model accuracy further by providing the true field of view.
 * **Flexible resolution support**: Works seamlessly with various resolutions and aspect ratios, from 2:1 to 1:2.
-* **Optimized for speed**: Achieves <0.1s latency per image on an A100 / RTX 3090 GPU with fp16, and 0.2s with fp32.
+* **Optimized for speed**: Achieves 55ms latency per image on an A100 / RTX 3090 GPU. Adjustable inference resolution for even faster speed.
 
-## TODO List
+## 🆕 News
 
-- [x] Release inference code & ViT-Large model.
-- [x] Release evaluation and training code.
-- [ ] Release ViT-Base and ViT-Giant models.
+***(2025-06-10)***
 
-🌟*Updated on 2025/03/18* [CHANGELOG](CHANGELOG.md)
-  - **Training and evaluation code released!**
-  - Installation via pip and CLI usage supported. 
+* ❗**Released MoGe-2**, a state-of-the-art model for monocular **metric-scale** geometry, with these capabilities in one unified model:
+  * comparable and even better performance over MoGe-1;
+  * significant improvement of **visual sharpness**;
+  * high-quality **normal map** estimation "for free". (quantitative eval coming);
+  * lower inference latency.
 
-## Installation
+  Paper coming soon. stay tuned!
+
+## 📦 Installation
 
 ### Install via pip
   
@@ -44,38 +48,82 @@ pip install git+https://github.com/microsoft/MoGe.git
 ```bash
 git clone https://github.com/microsoft/MoGe.git
 cd MoGe
+pip install -r requirements.txt   # install the requirements
 ```
 
-and install the requirements
+Note: MoGe should be compatible with most requirements versions. Please check the `requirements.txt` for more details if you encounter any dependency issues.
 
-```bash
-pip install -r requirements.txt
-```
+## 🤗 Pretrained Models
 
-MoGe should be compatible with most requirements versions. Please check the `requirements.txt` for more details if you have concerns.
+Our pretrained models are available on the huggingface hub:
 
-## Usage
+<table>
+  <thead>
+    <tr>
+      <th>Version</th>
+      <th>Hugging Face Model</th>
+      <th>Metric scale</th>
+      <th>Normal</th>
+      <th>#Params</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td>MoGe-1</td>
+      <td><a href="https://huggingface.co/Ruicheng/moge-vitl" target="_blank"><code>Ruicheng/moge-vitl</code><a></td>
+      <td>-</td>
+      <td>-</td>
+      <td>314M</td>
+    </tr>
+    <tr>
+      <td rowspan="4">MoGe-2</td>
+      <td><a href="https://huggingface.co/Ruicheng/moge-2-vitl" target="_blank"><code>Ruicheng/moge-2-vitl</code></a></td>
+      <td>✅</td>
+      <td>-</td>
+      <td>326M</td>
+    </tr>
+    <tr>
+      <td><a href="https://huggingface.co/Ruicheng/moge-2-vitl-normal" target="_blank"><code>Ruicheng/moge-2-vitl-normal</code></a></td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>331M</td>
+    </tr>
+    <tr>
+      <td><a href="https://huggingface.co/Ruicheng/moge-2-vitb-normal" target="_blank"><code>Ruicheng/moge-2-vitb-normal</code></a></td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>104M</td>
+    </tr>
+    <tr>
+      <td><a href="https://huggingface.co/Ruicheng/moge-2-vits-normal" target="_blank"><code>Ruicheng/moge-2-vits-normal</code></a></td>
+      <td>✅</td>
+      <td>✅</td>
+      <td>35M</td>
+    </tr>
+  </tbody>
+</table>
 
-### Pretrained model
 
-The ViT-Large model has been uploaded to Hugging Face hub at [Ruicheng/moge-vitl](https://huggingface.co/Ruicheng/moge-vitl). 
-You may load the model via `MoGeModel.from_pretrained("Ruicheng/moge-vitl")` without manually downloading.
+> NOTE: `moge-2-vitl` and `moge-2-vitl-normal` have almost the same level of performance, except for normal map estimation.
 
-If loading the model from a local file is preferred, you may manually download the model from the huggingface hub and load it via `MoGeModel.from_pretrained("PATH_TO_LOCAL_MODEL.pt")`.
+You may import the `MoGeModel` class of the matched version, then load the pretrained weights via `MoGeModel.from_pretrained("Ruicheng/moge-vitl")` with automatic downloading.
+If loading a local checkpoint, replace the model name with the local path.
 
-### Minimal code example 
+
+## 💡 Minimal Code Example 
 
 Here is a minimal example for loading the model and inferring on a single image. 
 
 ```python
 import cv2
 import torch
-from moge.model.v1 import MoGeModel
+# from moge.model.v1 import MoGeModel
+from moge.model.v2 import MoGeModel # Let's try MoGe-2
 
 device = torch.device("cuda")
 
 # Load the model from huggingface hub (or load from local).
-model = MoGeModel.from_pretrained("Ruicheng/moge-vitl").to(device)                             
+model = MoGeModel.from_pretrained("Ruicheng/moge-2-vitl-normal").to(device)                             
 
 # Read the input image and convert to tensor (3, H, W) and normalize to [0, 1]
 input_image = cv2.cvtColor(cv2.imread("PATH_TO_IMAGE.jpg"), cv2.COLOR_BGR2RGB)                       
@@ -83,16 +131,21 @@ input_image = torch.tensor(input_image / 255, dtype=torch.float32, device=device
 
 # Infer 
 output = model.infer(input_image)
-# `output` has keys "points", "depth", "mask" and "intrinsics",
-# The maps are in the same size as the input image. 
-# {
-#     "points": (H, W, 3),    # scale-invariant point map in OpenCV camera coordinate system (x right, y down, z forward)
-#     "depth": (H, W),        # scale-invariant depth map
-#     "mask": (H, W),         # a binary mask for valid pixels. 
-#     "intrinsics": (3, 3),   # normalized camera intrinsics
-# }
-# For more usage details, see the `MoGeModel.infer` docstring.
+"""
+`output` has keys "points", "depth", "mask", "normal" (optional) and "intrinsics",
+The maps are in the same size as the input image. 
+{
+    "points": (H, W, 3),    # point map in OpenCV camera coordinate system (x right, y down, z forward). For MoGe-2, the point map is in metric scale.
+    "depth": (H, W),        # depth map
+    "normal": (H, W, 3)     # normal map in OpenCV camera coordinate system. (available for MoGe-2-normal)
+    "mask": (H, W),         # a binary mask for valid pixels. 
+    "intrinsics": (3, 3),   # normalized camera intrinsics
+}
+"""
 ```
+For more usage details, see the `MoGeModel.infer()` docstring.
+
+## 💡 Usage
 
 ### Gradio demo | `moge app`
 
@@ -135,6 +188,7 @@ Options:
                               horizontal field of view in degrees. Otherwise,
                               MoGe will estimate it.
   -o, --output PATH           Output folder path
+  --version TEXT              Version of MoGe model. Defaults to "v2"
   --pretrained TEXT           Pretrained model name or path. Defaults to
                               "Ruicheng/moge-vitl"
   --device TEXT               Device name (e.g. "cuda", "cuda:0", "cpu").
@@ -189,21 +243,21 @@ The photo is from [this URL](https://commons.wikimedia.org/wiki/Category:360%C2%
 
 See also [`moge/scripts/infer_panorama.py`](moge/scripts/infer_panorama.py)
 
-## Training & Finetuning
+## 🏋️‍♂️ Training & Finetuning
 
 See [docs/train.md](docs/train.md)
 
-## Evaluation
+## 🧪 Evaluation
 
 See [docs/eval.md](docs/eval.md)
 
-## License
+## ⚖️ License
 
 MoGe code is released under the MIT license, except for DINOv2 code in `moge/model/dinov2` which is released by Meta AI under the Apache 2.0 license. 
 See [LICENSE](LICENSE) for more details.
 
 
-## Citation
+## 📜 Citation
 
 If you find our work useful in your research, we gratefully request that you consider citing our paper:
 

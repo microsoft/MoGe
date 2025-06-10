@@ -26,3 +26,7 @@
 - Renamed `moge.model.moge_model` to `moge.model.v1` for version management. 
   Now you can import the model class through `from moge.model.v1 import MoGeModel` or `from moge.model import import_model_class_by_version; MoGeModel = import_model_class_by_version('v1')`.
 - Exposed `num_tokens` parameter in MoGe model.
+
+## 2025-06-10
+### Added
+- Released MoGe-2. 

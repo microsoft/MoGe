@@ -201,8 +201,7 @@ class TrainDataLoaderPipeline:
         rescaled_w, rescaled_h = int(raw_width * raw_pixel_w / tgt_pixel_w), int(raw_height * raw_pixel_h / tgt_pixel_h)
         image = np.array(Image.fromarray(image).resize((rescaled_w, rescaled_h), Image.Resampling.LANCZOS))
 
-        fg_edge_mask, bg_edge_mask = depth_occlusion_edge_numpy(depth, mask=depth_mask, kernel_size=5, tol=0.01)
-        edge_mask = fg_edge_mask | bg_edge_mask
+        edge_mask = depth_occlusion_edge_numpy(depth, mask=depth_mask, thickness=2, tol=0.01)
         _, depth_mask_nearest, resize_index = mask_aware_nearest_resize_numpy(None, depth_mask, (rescaled_w, rescaled_h), return_index=True)
         depth_nearest = depth[resize_index]
         distance_nearest = norm3d(utils3d.numpy.depth_to_points(depth_nearest, intrinsics=intrinsics))

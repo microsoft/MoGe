@@ -21,6 +21,7 @@ def save_glb(
     faces: np.ndarray, 
     vertex_uvs: np.ndarray,
     texture: np.ndarray,
+    vertex_normals: Optional[np.ndarray] = None,
 ):
     import trimesh
     import trimesh.visual
@@ -28,6 +29,7 @@ def save_glb(
 
     trimesh.Trimesh(
         vertices=vertices, 
+        vertex_normals=vertex_normals,
         faces=faces, 
         visual = trimesh.visual.texture.TextureVisuals(
             uv=vertex_uvs, 
@@ -46,6 +48,7 @@ def save_ply(
     vertices: np.ndarray, 
     faces: np.ndarray, 
     vertex_colors: np.ndarray,
+    vertex_normals: Optional[np.ndarray] = None,
 ):
     import trimesh
     import trimesh.visual
@@ -55,9 +58,9 @@ def save_ply(
         vertices=vertices, 
         faces=faces, 
         vertex_colors=vertex_colors,
+        vertex_normals=vertex_normals,
         process=False
     ).export(save_path)
-
 
 
 def read_image(path: Union[str, os.PathLike, IO]) -> np.ndarray:

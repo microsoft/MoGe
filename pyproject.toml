@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "moge"
-version = "1.0.0"
+version = "2.0.0"
 description = "MoGe: Unlocking Accurate Monocular Geometry Estimation for Open-Domain Images with Optimal Training Supervision"
 readme = "README.md"
 license = {text = "MIT"}
@@ -20,7 +20,7 @@ dependencies = [
     "torch>=2.0.0",
     "torchvision",
     "gradio",
-    "utils3d @ git+https://github.com/EasternJournalist/utils3d.git@3913c65d81e05e47b9f367250cf8c0f7462a0900"
+    "utils3d @ git+https://github.com/EasternJournalist/utils3d.git@c5daf6f6c244d251f252102d09e9b7bcef791a38"
 ]
 requires-python = ">=3.9"
 

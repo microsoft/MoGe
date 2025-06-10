@@ -15,7 +15,8 @@ import torch.version
 import utils3d
 from huggingface_hub import hf_hub_download
 
-from ..utils.geometry_torch import normalized_view_plane_uv, recover_focal_shift, gaussian_blur_2d
+
+from ..utils.geometry_torch import normalized_view_plane_uv, recover_focal_shift, gaussian_blur_2d, dilate_with_mask
 from .utils import wrap_dinov2_attention_with_sdpa, wrap_module_with_gradient_checkpointing, unwrap_module_with_gradient_checkpointing
 from ..utils.tools import timeit
 
@@ -201,9 +202,14 @@ class MoGeModel(nn.Module):
 
         self.register_buffer("image_mean", image_mean)
         self.register_buffer("image_std", image_std)
-        
-        if torch.__version__ >= '2.0':
-            self.enable_pytorch_native_sdpa()
+
+    @property
+    def device(self) -> torch.device:
+        return next(self.parameters()).device
+
+    @property
+    def dtype(self) -> torch.dtype:
+        return next(self.parameters()).dtype
 
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Union[str, Path, IO[bytes]], model_kwargs: Optional[Dict[str, Any]] = None, **hf_kwargs) -> 'MoGeModel':
@@ -243,10 +249,6 @@ class MoGeModel(nn.Module):
     def enable_gradient_checkpointing(self):
         for i in range(len(self.backbone.blocks)):
             self.backbone.blocks[i] = wrap_module_with_gradient_checkpointing(self.backbone.blocks[i])
-
-    def enable_pytorch_native_sdpa(self):
-        for i in range(len(self.backbone.blocks)):
-            self.backbone.blocks[i].attn = wrap_dinov2_attention_with_sdpa(self.backbone.blocks[i].attn)
     
     def _remap_points(self, points: torch.Tensor) -> torch.Tensor:
         if self.remap_output == 'linear':
@@ -334,58 +336,57 @@ class MoGeModel(nn.Module):
             image = image.unsqueeze(0)
         else:
             omit_batch_dim = False
+        image = image.to(dtype=self.dtype, device=self.device)
 
         original_height, original_width = image.shape[-2:]
-        area = original_height * original_width
         aspect_ratio = original_width / original_height
 
         if num_tokens is None:
             min_tokens, max_tokens = self.num_tokens_range
             num_tokens = int(min_tokens + (resolution_level / 9) * (max_tokens - min_tokens))
         
-        with torch.autocast(device_type=image.device.type, dtype=torch.float16, enabled=use_fp16):
+        with torch.autocast(device_type=self.device.type, dtype=torch.float16, enabled=use_fp16 and self.dtype != torch.float16):
             output = self.forward(image, num_tokens)
         points, mask = output['points'], output['mask']
 
-        mask_binary = mask > self.mask_threshold
+        # Always process the output in fp32 precision
+        with torch.autocast(device_type=self.device.type, dtype=torch.float32):
+            points, mask, fov_x = map(lambda x: x.float() if isinstance(x, torch.Tensor) else x, [points, mask, fov_x])
 
-        # Get camera-space point map. (Focal here is the focal length relative to half the image diagonal)
-        if fov_x is None:
-            focal, shift = recover_focal_shift(points, mask_binary)
-        else:
-            focal = aspect_ratio / (1 + aspect_ratio ** 2) ** 0.5 / torch.tan(torch.deg2rad(torch.as_tensor(fov_x, device=points.device, dtype=points.dtype) / 2))
-            if focal.ndim == 0:
-                focal = focal[None].expand(points.shape[0])
-            _, shift = recover_focal_shift(points, mask_binary, focal=focal)
-        fx = focal / 2 * (1 + aspect_ratio ** 2) ** 0.5 / aspect_ratio
-        fy = focal / 2 * (1 + aspect_ratio ** 2) ** 0.5 
-        intrinsics = utils3d.torch.intrinsics_from_focal_center(fx, fy, 0.5, 0.5)
-        depth = points[..., 2] + shift[..., None, None]
-        
-        # If projection constraint is forced, recompute the point map using the actual depth map
-        if force_projection:
-            points = utils3d.torch.depth_to_points(depth, intrinsics=intrinsics)
-        else:
-            points = points + torch.stack([torch.zeros_like(shift), torch.zeros_like(shift), shift], dim=-1)[..., None, None, :]
+            mask_binary = mask > self.mask_threshold
 
-        # Apply mask if needed
-        if apply_mask:
-            points = torch.where(mask_binary[..., None], points, torch.inf)
-            depth = torch.where(mask_binary, depth, torch.inf)
+            # Get camera-space point map. (Focal here is the focal length relative to half the image diagonal)
+            if fov_x is None:
+                focal, shift = recover_focal_shift(points, mask_binary)
+            else:
+                focal = aspect_ratio / (1 + aspect_ratio ** 2) ** 0.5 / torch.tan(torch.deg2rad(torch.as_tensor(fov_x, device=points.device, dtype=points.dtype) / 2))
+                if focal.ndim == 0:
+                    focal = focal[None].expand(points.shape[0])
+                _, shift = recover_focal_shift(points, mask_binary, focal=focal)
+            fx = focal / 2 * (1 + aspect_ratio ** 2) ** 0.5 / aspect_ratio
+            fy = focal / 2 * (1 + aspect_ratio ** 2) ** 0.5 
+            intrinsics = utils3d.torch.intrinsics_from_focal_center(fx, fy, 0.5, 0.5)
+            depth = points[..., 2] + shift[..., None, None]
+            
+            # If projection constraint is forced, recompute the point map using the actual depth map
+            if force_projection:
+                points = utils3d.torch.depth_to_points(depth, intrinsics=intrinsics)
+            else:
+                points = points + torch.stack([torch.zeros_like(shift), torch.zeros_like(shift), shift], dim=-1)[..., None, None, :]
 
-        if omit_batch_dim:
-            points = points.squeeze(0)
-            intrinsics = intrinsics.squeeze(0)
-            depth = depth.squeeze(0)
-            mask_binary = mask_binary.squeeze(0)
-            mask = mask.squeeze(0)
+            # Apply mask if needed
+            if apply_mask:
+                points = torch.where(mask_binary[..., None], points, torch.inf)
+                depth = torch.where(mask_binary, depth, torch.inf)
 
         return_dict = {
             'points': points,
             'intrinsics': intrinsics,
             'depth': depth,
             'mask': mask_binary,
-            'mask_prob': torch.sigmoid(mask)
         }
+
+        if omit_batch_dim:
+            return_dict = {k: v.squeeze(0) for k, v in return_dict.items()}
 
         return return_dict
