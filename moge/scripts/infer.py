@@ -17,7 +17,7 @@ import click
 @click.option('--input', '-i', 'input_path', type=click.Path(exists=True), help='Input image or folder path. "jpg" and "png" are supported.')
 @click.option('--fov_x', 'fov_x_', type=float, default=None, help='If camera parameters are known, set the horizontal field of view in degrees. Otherwise, MoGe will estimate it.')
 @click.option('--output', '-o', 'output_path', default='./output', type=click.Path(), help='Output folder path')
-@click.option('--pretrained', 'pretrained_model_name_or_path', type=str, default=None, help='Pretrained model name or path. Defaults to "Ruicheng/moge-vitl"')
+@click.option('--pretrained', 'pretrained_model_name_or_path', type=str, default=None, help='Pretrained model name or path. If not provided, the corresponding default model will be chosen.')
 @click.option('--version', 'model_version', type=click.Choice(['v1', 'v2']), default='v2', help='Model version. Defaults to "v2"')
 @click.option('--device', 'device_name', type=str, default='cuda', help='Device name (e.g. "cuda", "cuda:0", "cpu"). Defaults to "cuda"')
 @click.option('--fp16', 'use_fp16', is_flag=True, help='Use fp16 precision for much faster inference.')
@@ -124,7 +124,7 @@ def main(
 
         # Export mesh & visulization
         if save_glb_ or save_ply_ or show:
-            mask_cleaned = mask & ~depth_occlusion_edge_numpy(depth, mask, tol=threshold, thickness=2)
+            mask_cleaned = mask & ~utils3d.numpy.depth_edge(depth, rtol=0.04)
             if normal is None:
                 faces, vertices, vertex_colors, vertex_uvs = utils3d.numpy.image_mesh(
                     points,

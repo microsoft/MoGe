@@ -91,7 +91,7 @@ def main(share: bool, pretrained_model_name_or_path: str, model_version: str, us
         points, depth, mask, normal = output['points'], output['depth'], output['mask'], output.get('normal', None)
 
         if remove_edge:
-            mask_cleaned = mask & ~depth_occlusion_edge_numpy(depth, mask, tol=2 / max(image.shape[:2]), thickness=2)
+            mask_cleaned = mask & ~utils3d.numpy.depth_edge(depth, rtol=0.04)
         else:
             mask_cleaned = mask
         
