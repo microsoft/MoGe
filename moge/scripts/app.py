@@ -85,7 +85,7 @@ def main(share: bool, pretrained_model_name_or_path: str, model_version: str, us
 
         height, width = image.shape[:2]
 
-        resolution_level_int = {'Low': 0, 'Medium': 5, 'High': 9, 'Ultra': 18}.get(resolution_level, 9)
+        resolution_level_int = {'Low': 0, 'Medium': 5, 'High': 9, 'Ultra': 30}.get(resolution_level, 9)
         output = run_with_gpu(image, resolution_level_int, apply_mask)
 
         points, depth, mask, normal = output['points'], output['depth'], output['mask'], output.get('normal', None)
