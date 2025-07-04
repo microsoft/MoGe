@@ -280,4 +280,14 @@ If you find our work useful in your research, we gratefully request that you con
     primaryClass={cs.CV},
     url={https://arxiv.org/abs/2410.19115}, 
 }
+
+@misc{wang2025moge2,
+      title={MoGe-2: Accurate Monocular Geometry with Metric Scale and Sharp Details}, 
+      author={Ruicheng Wang and Sicheng Xu and Yue Dong and Yu Deng and Jianfeng Xiang and Zelong Lv and Guangzhong Sun and Xin Tong and Jiaolong Yang},
+      year={2025},
+      eprint={2507.02546},
+      archivePrefix={arXiv},
+      primaryClass={cs.CV},
+      url={https://arxiv.org/abs/2507.02546}, 
+}
 ```
