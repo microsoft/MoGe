@@ -1,6 +1,6 @@
 # MoGe: Accurate Monocular Geometry Estimation
 
-MoGe series are powerful models for recovering 3D geometry (metric point maps, metric depth maps, and normal maps) from monocular open-domain images. ***Check our websites ([MoGe-1](https://wangrc.site/MoGePage), [MoGe-2](https://wangrc.site/MoGePage)) for videos and interactive results!***
+MoGe is a powerful model for recovering 3D geometry from monocular open-domain images, including metric point maps, metric depth maps, normal maps and camera FOV. ***Check our websites ([MoGe-1](https://wangrc.site/MoGePage), [MoGe-2](https://wangrc.site/MoGePage)) for videos and interactive results!***
 
 ## Publications
 
@@ -11,7 +11,7 @@ MoGe series are powerful models for recovering 3D geometry (metric point maps, m
   <a href='https://wangrc.site/MoGe2Page/'><img src='https://img.shields.io/badge/Project_Page-Website-green?logo=googlechrome&logoColor=white' alt='Project Page'></a>
   <a href='https://huggingface.co/spaces/Ruicheng/MoGe2'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Demo_(MoGe_v2)-blue'></a>
 
-https://github.com/EasternJournalist/MoGe2Page/blob/master/static/videos/teaser/moge-2-demo_sound2_crf22.mp4
+https://github.com/user-attachments/assets/8f9ae680-659d-4f7f-82e2-b9ed9d6b988a
 
 </div>
 
@@ -28,7 +28,7 @@ https://github.com/EasternJournalist/MoGe2Page/blob/master/static/videos/teaser/
 
 ## 🌟 Features
 
-* **Accurate 3D geometry estimation**: Estimate point maps & depth maps & normal maps from open-domain single images with high precision. 
+* **Accurate 3D geometry estimation**: Estimate point maps & depth maps & [normal maps](docs/normal.md) from open-domain single images with high precision -- all capabilities in one model, one forward pass.
 * **Optional ground-truth FOV input**: Enhance model accuracy further by providing the true field of view.
 * **Flexible resolution support**: Works seamlessly with various resolutions and aspect ratios, from 2:1 to 1:2.
 * **Optimized for speed**: Achieves 60ms latency per image (A100 or RTX3090, FP16, ViT-L). Adjustable inference resolution for even faster speed.
@@ -41,7 +41,7 @@ https://github.com/EasternJournalist/MoGe2Page/blob/master/static/videos/teaser/
   * point map prediction in **metric scale**;
   * comparable and even better performance over MoGe-1;
   * significant improvement of **visual sharpness**;
-  * high-quality **normal map** estimation "for free". See [docs/normal.md](docs/normal.md)
+  * high-quality [**normal map** estimation](docs/normal.md);
   * lower inference latency.
 
 ## 📦 Installation
