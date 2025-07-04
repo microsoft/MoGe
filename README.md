@@ -9,7 +9,7 @@ MoGe is a powerful model for recovering 3D geometry from monocular open-domain i
 <div align="center">
   <a href="https://arxiv.org/abs/2507.02546"><img src='https://img.shields.io/badge/arXiv-Paper-red?logo=arxiv&logoColor=white' alt='arXiv'></a>
   <a href='https://wangrc.site/MoGe2Page/'><img src='https://img.shields.io/badge/Project_Page-Website-green?logo=googlechrome&logoColor=white' alt='Project Page'></a>
-  <a href='https://huggingface.co/spaces/Ruicheng/MoGe2'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Demo_(MoGe_v2)-blue'></a>
+  <a href='https://huggingface.co/spaces/Ruicheng/MoGe-2'><img src='https://img.shields.io/badge/%F0%9F%A4%97%20Hugging%20Face-Demo_(MoGe_v2)-blue'></a>
 
 https://github.com/user-attachments/assets/8f9ae680-659d-4f7f-82e2-b9ed9d6b988a
 
