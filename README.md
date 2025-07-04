@@ -2,7 +2,7 @@
 
 MoGe is a powerful model for recovering 3D geometry from monocular open-domain images, including metric point maps, metric depth maps, normal maps and camera FOV. ***Check our websites ([MoGe-1](https://wangrc.site/MoGePage), [MoGe-2](https://wangrc.site/MoGePage)) for videos and interactive results!***
 
-## Publications
+## 📖 Publications
 
 ### MoGe-2: Accurate Monocular Geometry with Metric Scale and Sharp Details
 
