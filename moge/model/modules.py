@@ -95,7 +95,16 @@ class DINOv2Encoder(nn.Module):
 
         self.register_buffer("image_mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
         self.register_buffer("image_std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
-        
+
+    @property
+    def onnx_compatible_mode(self):
+        return getattr(self, "_onnx_compatible_mode", False)
+
+    @onnx_compatible_mode.setter
+    def onnx_compatible_mode(self, value: bool):
+        self._onnx_compatible_mode = value
+        self.backbone.onnx_compatible_mode = value
+
     def init_weights(self):
         pretrained_backbone_state_dict = self.hub_loader(pretrained=True).state_dict()
         self.backbone.load_state_dict(pretrained_backbone_state_dict)
@@ -108,8 +117,8 @@ class DINOv2Encoder(nn.Module):
         for i in range(len(self.backbone.blocks)):
             wrap_dinov2_attention_with_sdpa(self.backbone.blocks[i].attn)
 
-    def forward(self, image: torch.Tensor, token_rows: int, token_cols: int, return_class_token: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
-        image_14 = F.interpolate(image, (token_rows * 14, token_cols * 14), mode="bilinear", align_corners=False, antialias=True)
+    def forward(self, image: torch.Tensor, token_rows: Union[int, torch.LongTensor], token_cols: Union[int, torch.LongTensor], return_class_token: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
+        image_14 = F.interpolate(image, (token_rows * 14, token_cols * 14), mode="bilinear", align_corners=False, antialias=not self.onnx_compatible_mode)
         image_14 = (image_14 - self.image_mean) / self.image_std
 
         # Get intermediate layers from the backbone
@@ -231,9 +240,6 @@ class ConvStack(nn.Module):
                 self.res_blocks[i][j] = wrap_module_with_gradient_checkpointing(self.res_blocks[i][j])
 
     def forward(self, in_features: List[torch.Tensor]):
-        batch_shape = in_features[0].shape[:-3]
-        in_features = [x.reshape(-1, *x.shape[-3:]) for x in in_features]
-
         out_features = []
         for i in range(len(self.res_blocks)):
             feature = self.input_blocks[i](in_features[i])
@@ -245,6 +251,4 @@ class ConvStack(nn.Module):
             out_features.append(self.output_blocks[i](x))
             if i < len(self.res_blocks) - 1:
                 x = self.resamplers[i](x)
-        
-        out_features = [x.unflatten(0, batch_shape) for x in out_features]
         return out_features
