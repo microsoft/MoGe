@@ -29,7 +29,7 @@ The exported models are in **FP32** precision, with **dynamic input resolution**
 
 ## Customized Exportation
 
-### Dynamic Shape & Number of Tokens
+### Dynamic Shape & Variable Number of Tokens
 ```python
 import os
 os.environ['XFORMERS_DISABLED'] = '1'   # Disable xformers
@@ -56,7 +56,7 @@ torch.onnx.export(
 )
 ```
 
-### Static Shape & Number of Tokens
+### Static Shape & Fixed Number of Tokens
 
 ```python
 import os
