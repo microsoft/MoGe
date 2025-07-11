@@ -2,7 +2,7 @@
 
 MoGe-2 is compatible with the ONNX format (opset version ≥ 14). We have exported several models for use in ONNXRuntime or deployment on other compatible inference engines.
 
-> **Important Note:** The `.infer()` method in our PyTorch code includes some post-processing logic (e.g., recovering focal and shift and reprojection) that cannot be exported to ONNX. The ONNX model only includes the raw forward() pass, which outputs intermediate predictions (such as depth, normals, or features) in model space. You will need to implement any required post-processing steps separately if replicating the full inference pipeline.
+> **Important Note:** The `.infer()` method in our PyTorch code includes some post-processing logic (e.g., recovering focal and shift and reprojection) that cannot be exported to ONNX. The ONNX model only includes the raw forward() pass, which outputs intermediate predictions (affine point map, normal map, floating point mask, metric scale). You will need to implement any required post-processing steps separately if replicating the full inference pipeline.
 
 The exported models are in **FP32** precision, with **dynamic input resolution** and **variable-length** token support. You can further optimize these models based on your target deployment platform.
 
