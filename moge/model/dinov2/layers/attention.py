@@ -11,6 +11,7 @@ import logging
 import os
 import warnings
 
+import torch.nn.functional as F
 from torch import Tensor
 from torch import nn
 
