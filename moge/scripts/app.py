@@ -51,8 +51,10 @@ def main(share: bool, pretrained_model_name_or_path: str, model_version: str, us
             "v2": "Ruicheng/moge-2-vitl-normal",
         }
         pretrained_model_name_or_path = DEFAULT_PRETRAINED_MODEL_FOR_EACH_VERSION[model_version]
-    model = import_model_class_by_version(model_version).from_pretrained(pretrained_model_name_or_path).cuda().eval()
-    if use_fp16:
+    # 自动选择设备
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    model = import_model_class_by_version(model_version).from_pretrained(pretrained_model_name_or_path).to(device).eval()
+    if use_fp16 and device.type == 'cuda':
         model.half()
     thread_pool_executor = ThreadPoolExecutor(max_workers=1)
 
@@ -76,6 +78,13 @@ def main(share: bool, pretrained_model_name_or_path: str, model_version: str, us
         output = {k: v.cpu().numpy() for k, v in output.items()}
         return output
 
+    # Inference on CPU
+    def run_with_cpu(image: np.ndarray, resolution_level: int, apply_mask: bool) -> Dict[str, np.ndarray]:
+        image_tensor = torch.tensor(image, dtype=torch.float32, device=torch.device('cpu')).permute(2, 0, 1) / 255
+        output = model.infer(image_tensor, apply_mask=apply_mask, resolution_level=resolution_level, use_fp16=False)
+        output = {k: v.cpu().numpy() for k, v in output.items()}
+        return output
+
     # Full inference pipeline
     def run(image: np.ndarray, max_size: int = 800, resolution_level: str = 'High',  apply_mask: bool = True, remove_edge: bool = True, request: gr.Request = None):
         larger_size = max(image.shape[:2])
@@ -86,7 +95,11 @@ def main(share: bool, pretrained_model_name_or_path: str, model_version: str, us
         height, width = image.shape[:2]
 
         resolution_level_int = {'Low': 0, 'Medium': 5, 'High': 9, 'Ultra': 30}.get(resolution_level, 9)
-        output = run_with_gpu(image, resolution_level_int, apply_mask)
+        # 判断当前模型设备
+        if model.device.type == 'cuda':
+            output = run_with_gpu(image, resolution_level_int, apply_mask)
+        else:
+            output = run_with_cpu(image, resolution_level_int, apply_mask)
 
         points, depth, mask, normal = output['points'], output['depth'], output['mask'], output.get('normal', None)
 
