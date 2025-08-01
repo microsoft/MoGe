@@ -25,6 +25,7 @@ class MoGeModel(nn.Module):
     points_head: ConvStack
     mask_head: ConvStack
     scale_head: MLP
+    onnx_compatible_mode: bool
 
     def __init__(self, 
         encoder: Dict[str, Any],
@@ -63,6 +64,15 @@ class MoGeModel(nn.Module):
     def dtype(self) -> torch.dtype:
         return next(self.parameters()).dtype
     
+    @property
+    def onnx_compatible_mode(self) -> bool:
+        return getattr(self, "_onnx_compatible_mode", False)
+
+    @onnx_compatible_mode.setter
+    def onnx_compatible_mode(self, value: bool):
+        self._onnx_compatible_mode = value
+        self.encoder.onnx_compatible_mode = value
+
     @classmethod
     def from_pretrained(cls, pretrained_model_name_or_path: Union[str, Path, IO[bytes]], model_kwargs: Optional[Dict[str, Any]] = None, **hf_kwargs) -> 'MoGeModel':
         """
