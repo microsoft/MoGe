@@ -153,7 +153,7 @@ class EvalDataLoaderPipeline:
         uv_tgt = utils3d.np.uv_map(tgt_height, tgt_width)
         pts = np.concatenate([uv_tgt, np.ones((tgt_height, tgt_width, 1), dtype=np.float32)], axis=-1) @ transform.T
         uv_remap = pts[:, :, :2] / (pts[:, :, 2:3] + 1e-12)
-        pixel_remap = utils3d.np.uv_to_pixel(uv_remap, width=rescaled_w, height=rescaled_h).astype(np.float32)
+        pixel_remap = utils3d.np.uv_to_pixel(uv_remap, (rescaled_h, rescaled_w)).astype(np.float32)
         
         tgt_image = cv2.remap(image, pixel_remap[:, :, 0], pixel_remap[:, :, 1], cv2.INTER_LINEAR)
         tgt_distance = cv2.remap(distance, pixel_remap[:, :, 0], pixel_remap[:, :, 1], cv2.INTER_NEAREST)
