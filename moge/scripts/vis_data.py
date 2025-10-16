@@ -52,7 +52,7 @@ def main(
         intrinsics = np.array(meta['intrinsics'])
 
         extrinsics = np.array([[1, 0, 0, 0], [0, -1, 0, 0], [0, 0, -1, 0], [0, 0, 0, 1]], dtype=float)   # OpenGL's identity camera
-        verts = utils3d.numpy.unproject_cv(utils3d.numpy.image_uv(*image.shape[:2]), depth, extrinsics=extrinsics, intrinsics=intrinsics)
+        verts = utils3d.np.unproject_cv(utils3d.np.uv_map(image.shape[:2]), depth, extrinsics=extrinsics, intrinsics=intrinsics)
         
         depth_mask_ply = depth_mask & (depth < depth[depth_mask].min() * max_depth)
         point_cloud = trimesh.PointCloud(verts[depth_mask_ply], image[depth_mask_ply] / 255)

@@ -1,0 +1,332 @@
+{
+    "data": {
+        "aspect_ratio_range": [0.5, 2.0],
+        "area_range": [250000, 1000000],
+        "clamp_max_depth": 1000.0,
+        "center_augmentation": 0.5,
+        "fov_range_absolute": [1, 179],
+        "fov_range_relative": [0.01, 1.0],
+        "image_augmentation": ["jittering", "jpeg_loss", "blurring"],
+        "datasets": [ 
+            {
+                "name": "A2D2",
+                "path": "blobmnt/data_v3/A2D2/",
+                "label_type": "C",
+                "weight": 0.8,
+                "depth_unit": 1,
+                "fov_range_relative": [0.5, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "dof"],
+                "depth": "depth_completed.png"
+            },
+            {
+                "name": "ARKitScenes",
+                "path": "blobmnt/data_v3/ARKitScenes/",
+                "label_type": "B",
+                "weight": 8.6,
+                "depth_unit": 0.001,
+                "fov_range_relative": [0.5, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "dof"],
+                "depth": "depth_completed.png"
+            },
+            {
+                "name": "Argoverse2",
+                "path": "blobmnt/data_v3/Argoverse2/",
+                "label_type": "C",
+                "weight": 7.4,
+                "depth_unit": 1,
+                "fov_range_relative": [0.5, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "dof"],
+                "depth": "depth_completed.png"
+            },
+            {
+                "name": "MegaDepth",
+                "path": "blobmnt/data_v3/MegaDepth_840/",
+                "label_type": "C",
+                "weight": 5.6,
+                "fov_range_relative": [0.5, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "dof"],
+                "depth": "depth_completed.png"
+            },
+            {
+                "name": "Taskonomy",
+                "path": "blobmnt/data_v3/Taskonomy/",
+                "label_type": "B",
+                "weight": 10.0,
+                "depth_unit": 1,
+                "fov_range_relative": [0.75, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "dof"],
+                "finite_depth_mask": "only_known",
+                "depth": "depth_completed.png"
+            }, 
+            {
+                "name": "Waymo",
+                "path": "blobmnt/data_v3/Waymo/",
+                "label_type": "C",
+                "weight": 6.4,
+                "depth_unit": 1,
+                "fov_range_relative": [0.5, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "dof"],
+                "depth": "depth_completed.png"
+            },
+            {
+                "name": "ScanNetpp",
+                "path": "blobmnt/data_v3/ScanNetpp/",
+                "label_type": "B",
+                "weight": 4.8,
+                "depth_unit": 1,
+                "fov_range_relative": [0.33, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "dof"],
+                "depth": "depth_completed.png"
+            },
+            {
+                "name": "BlendedMVS",
+                "path": "blobmnt/data_v3/BlendedMVS/",
+                "label_type": "B",
+                "weight": 12.0,
+                "fov_range_relative": [0.5, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "dof"],
+                "depth": "depth_completed.png"
+            },
+            {
+                "name": "ObjaverseV1",
+                "path": "blobmnt/data_v3/ObjaverseV1/",
+                "label_type": "A",
+                "weight": 4.8,
+                "center_augmentation": 0.25,
+                "fov_range_relative": [0.7, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "shot_noise"]
+            },
+            {
+                "name": "GTA-SfM",
+                "path": "blobmnt/data_v3/GTA-SfM/",
+                "label_type": "A",
+                "weight": 2.8,
+                "depth_unit": 1,
+                "fov_range_relative": [0.5, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "shot_noise", "dof"]
+            },
+            {
+                "name": "Hypersim",
+                "path": "blobmnt/data_v3/Hypersim/",
+                "label_type": "A",
+                "weight": 5.0,
+                "depth_unit": 1,
+                "fov_range_relative": [0.5, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "shot_noise", "dof"],
+                "finite_depth_mask": "only_known"
+            },
+            {
+                "name": "IRS",
+                "path": "blobmnt/data_v3/IRS/",
+                "label_type": "A",
+                "weight": 5.6,
+                "depth_unit": 1,
+                "fov_range_relative": [0.5, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "shot_noise", "dof"],
+                "finite_depth_mask": "only_known"
+            },
+            {
+                "name": "KenBurns",
+                "path": "blobmnt/data_v3/KenBurns/",
+                "label_type": "A",
+                "weight": 1.6,
+                "fov_range_relative": [0.75, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "shot_noise", "dof"]
+            },
+            {
+                "name": "MatrixCity",
+                "path": "blobmnt/data_v3/MatrixCity/",
+                "label_type": "A",
+                "depth_unit": 1,
+                "weight": 1.3,
+                "fov_range_relative": [0.33, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "shot_noise", "dof"]
+            },
+            {
+                "name": "MidAir",
+                "path": "blobmnt/data_v3/MidAir/",
+                "label_type": "A",
+                "depth_unit": 1,
+                "weight": 4.0,
+                "fov_range_relative": [0.33, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "shot_noise", "dof"]
+            },
+            {
+                "name": "MVS-Synth",
+                "path": "blobmnt/data_v3/MVS-Synth/",
+                "label_type": "A",
+                "depth_unit": 0.1,
+                "weight": 1.2,
+                "fov_range_relative": [0.33, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "shot_noise", "dof"]
+            },
+            {
+                "name": "Structured3D",
+                "path": "blobmnt/data_v3/Structured3D/",
+                "label_type": "A",
+                "weight": 4.8,
+                "depth_unit": 0.001,
+                "fov_range_relative": [0.5, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "shot_noise", "dof"],
+                "finite_depth_mask": "only_known"
+            },
+            {
+                "name": "Synthia",
+                "path": "blobmnt/data_v3/Synthia/",
+                "label_type": "A",
+                "depth_unit": 1,
+                "weight": 1.2,
+                "fov_range_relative": [0.75, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "shot_noise", "dof"]
+            },
+            {
+                "name": "TartanAir",
+                "path": "blobmnt/data_v3/TartanAir/",
+                "label_type": "A",
+                "depth_unit": 1.0,
+                "weight": 5.0,
+                "fov_range_relative": [0.5, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "shot_noise", "dof"]
+            },                       
+            {
+                "name": "UrbanSyn",
+                "path": "blobmnt/data_v3/UrbanSyn/",
+                "label_type": "A",
+                "weight": 2.1,
+                "depth_unit": 1,
+                "fov_range_relative": [0.5, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "shot_noise", "dof"]
+            },
+            {
+                "name": "ApolloSynthetic",
+                "path": "blobmnt/data_v3/ApolloSynthetic/",
+                "label_type": "A",
+                "weight": 4.0,
+                "depth_unit": 1,
+                "fov_range_relative": [0.5, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "shot_noise", "dof"]
+            },
+            {
+                "name": "Synscapes",
+                "path": "blobmnt/data_v3/Synscapes/",
+                "label_type": "A",
+                "weight": 2.0,
+                "depth_unit": 1,
+                "fov_range_relative": [0.5, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "shot_noise", "dof"] 
+            },
+            {
+                "name": "UnrealStereo4K",
+                "path": "blobmnt/data_v3/UnrealStereo4K/",
+                "label_type": "A",
+                "weight": 1.7,
+                "depth_unit": 1,
+                "fov_range_relative": [0.33, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "shot_noise", "dof"] 
+            },
+            {
+                "name": "EDEN",
+                "path": "blobmnt/data_v3/EDEN/",
+                "label_type": "A",
+                "weight": 1.2,
+                "fov_range_relative": [0.5, 1.0],
+                "image_augmentation": ["jittering", "jpeg_loss", "blurring", "shot_noise", "dof"] 
+            }
+        ]
+    },
+    "model_version": "v2",
+    "model": {
+        "encoder": {
+            "backbone": "dinov2_vitl14",
+            "intermediate_layers": [5, 11, 17, 23],
+            "dim_out": 1024
+        },
+        "neck": {
+            "dim_in": [1026, 2, 2, 2, 2],
+            "dim_out": null,
+            "dim_res_blocks": [1024, 256, 128, 64, 32],
+            "num_res_blocks": [0, 2, 2, 2, 0],
+            "res_block_in_norm": "none",
+            "res_block_hidden_norm": "none",
+            "resamplers": ["conv_transpose", "conv_transpose", "conv_transpose", "bilinear"]
+        },
+        "points_head": {
+            "dim_in": [1024, 256, 128, 64, 32],
+            "dim_out": [null, null, null, null, 3],
+            "dim_res_blocks": [1024, 256, 128, 64, 32],
+            "num_res_blocks": [0, 1, 1, 1, 0],
+            "res_block_in_norm": "none",
+            "res_block_hidden_norm": "none",
+            "resamplers": ["conv_transpose", "conv_transpose", "conv_transpose", "bilinear"]
+        },
+        "normal_head": {
+            "dim_in": [1024, 256, 128, 64, 32],
+            "dim_out": [null, null, null, null, 3],
+            "dim_res_blocks": [1024, 256, 128, 64, 32],
+            "num_res_blocks": [0, 1, 1, 1, 0],
+            "res_block_in_norm": "none",
+            "res_block_hidden_norm": "none",
+            "resamplers": ["conv_transpose", "conv_transpose", "conv_transpose", "bilinear"]
+        },
+        "mask_head": {
+            "dim_in": [1024, 256, 128, 64, 32],
+            "dim_out": [null, null, null, null, 1],
+            "dim_res_blocks": [1024, 256, 128, 64, 32],
+            "num_res_blocks": [0, 1, 1, 1, 0],
+            "res_block_in_norm": "none",
+            "res_block_hidden_norm": "none",
+            "resamplers": ["conv_transpose", "conv_transpose", "conv_transpose", "bilinear"]
+        },
+        "scale_head": {
+            "dims": [1024, 1024, 1024, 1]
+        },
+        "remap_output": "exp",
+        "num_tokens_range": [1200, 3600]
+    },
+    "optimizer": {
+        "type": "AdamW",
+        "params": [
+            {"params": {"include": ["*"], "exclude": ["*.backbone.*"]}, "lr": 1e-4},
+            {"params": {"include": ["*.backbone.*"]}, "lr": 1e-5}
+        ]
+    },
+    "lr_scheduler": {
+        "type": "SequentialLR",
+        "params": {
+            "schedulers": [
+                {"type": "LambdaLR", "params": {"lr_lambda": ["1.0", "max(0.0, min(1.0, (epoch - 1000) / 1000))"]}},
+                {"type": "StepLR", "params": {"step_size": 25000, "gamma": 0.5}}
+            ],
+            "milestones": [2000]
+        }
+    },
+    "low_resolution_training_steps": 50000,
+    "loss": {
+        "invalid": {},
+        "A": {
+            "global": {"function": "affine_invariant_global_loss", "weight": 1.0, "params": {"align_resolution": 48}},
+            "patch_4": {"function": "affine_invariant_local_loss", "weight": 1.0, "params": {"level": 4, "align_resolution": 24, "num_patches": 16}},
+            "patch_16": {"function": "affine_invariant_local_loss", "weight": 1.0, "params": {"level": 16, "align_resolution": 12, "num_patches": 256}},
+            "patch_64": {"function": "affine_invariant_local_loss", "weight": 1.0, "params": {"level": 64, "align_resolution": 6, "num_patches": 4096}},
+            "normal": {"function": "edge_loss", "weight": 1.0},
+            "normal_map": {"function": "normal_map_loss", "weight": 0.1},
+            "metric_scale": {"function": "metric_scale_loss", "weight": 0.1},
+            "mask": {"function": "mask_bce_loss", "weight": 0.1}
+        },
+        "B": {
+            "global": {"function": "affine_invariant_global_loss", "weight": 1.0, "params": {"align_resolution": 48}},
+            "patch_4": {"function": "affine_invariant_local_loss", "weight": 1.0, "params": {"level": 4, "align_resolution": 24, "num_patches": 16}},
+            "patch_16": {"function": "affine_invariant_local_loss", "weight": 1.0, "params": {"level": 16, "align_resolution": 12, "num_patches": 256}},
+            "metric_scale": {"function": "metric_scale_loss", "weight": 0.1},
+            "normal": {"function": "edge_loss", "weight": 1.0},
+            "normal_map": {"function": "normal_map_loss", "weight": 0.1},
+            "mask": {"function": "mask_bce_loss", "weight": 0.1}
+        },
+        "C": {
+            "global": {"function": "affine_invariant_global_loss", "weight": 1.0, "params": {"align_resolution": 48}},
+            "patch_4": {"function": "affine_invariant_local_loss", "weight": 1.0, "params": {"level": 4, "align_resolution": 24, "num_patches": 16}},
+            "metric_scale": {"function": "metric_scale_loss", "weight": 0.1},
+            "mask": {"function": "mask_bce_loss", "weight": 0.1}
+        }
+    }
+}

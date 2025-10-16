@@ -18,9 +18,9 @@ import utils3d
 
 
 def get_panorama_cameras():
-    vertices, _ = utils3d.numpy.icosahedron()
-    intrinsics = utils3d.numpy.intrinsics_from_fov(fov_x=np.deg2rad(90), fov_y=np.deg2rad(90))
-    extrinsics = utils3d.numpy.extrinsics_look_at([0, 0, 0], vertices, [0, 0, 1]).astype(np.float32)
+    vertices, _ = utils3d.np.icosahedron()
+    intrinsics = utils3d.np.intrinsics_from_fov(fov_x=np.deg2rad(90), fov_y=np.deg2rad(90))
+    extrinsics = utils3d.np.extrinsics_look_at([0, 0, 0], vertices, [0, 0, 1]).astype(np.float32)
     return extrinsics, [intrinsics] * len(vertices)
 
 
@@ -39,11 +39,11 @@ def directions_to_spherical_uv(directions: np.ndarray):
 
 def split_panorama_image(image: np.ndarray, extrinsics: np.ndarray, intrinsics: np.ndarray, resolution: int):
     height, width = image.shape[:2]
-    uv = utils3d.numpy.image_uv(width=resolution, height=resolution)
+    uv = utils3d.np.uv_map((resolution, resolution))
     splitted_images = []
     for i in range(len(extrinsics)):
-        spherical_uv = directions_to_spherical_uv(utils3d.numpy.unproject_cv(uv, extrinsics=extrinsics[i], intrinsics=intrinsics[i]))
-        pixels = utils3d.numpy.uv_to_pixel(spherical_uv, width=width, height=height).astype(np.float32)
+        spherical_uv = directions_to_spherical_uv(utils3d.np.unproject_cv(uv, extrinsics=extrinsics[i], intrinsics=intrinsics[i]))
+        pixels = utils3d.np.uv_to_pixel(spherical_uv, width=width, height=height).astype(np.float32)
 
         splitted_image = cv2.remap(image, pixels[..., 0], pixels[..., 1], interpolation=cv2.INTER_LINEAR)    
         splitted_images.append(splitted_image)
@@ -109,7 +109,7 @@ def merge_panorama_depth(width: int, height: int, distance_maps: List[np.ndarray
     else:
         panorama_depth_init = None
 
-    uv = utils3d.numpy.image_uv(width=width, height=height)
+    uv = utils3d.np.uv_map(height, width)
     spherical_directions = spherical_uv_to_directions(uv)
 
     # Warp each view to the panorama
@@ -117,10 +117,10 @@ def merge_panorama_depth(width: int, height: int, distance_maps: List[np.ndarray
     panorama_log_distance_laplacian_maps, panorama_laplacian_masks = [], []
     panorama_pred_masks = []
     for i in range(len(distance_maps)):
-        projected_uv, projected_depth = utils3d.numpy.project_cv(spherical_directions, extrinsics=extrinsics[i], intrinsics=intrinsics[i])
+        projected_uv, projected_depth = utils3d.np.project_cv(spherical_directions, extrinsics=extrinsics[i], intrinsics=intrinsics[i])
         projection_valid_mask = (projected_depth > 0) & (projected_uv > 0).all(axis=-1) & (projected_uv < 1).all(axis=-1)
         
-        projected_pixels = utils3d.numpy.uv_to_pixel(np.clip(projected_uv, 0, 1), width=distance_maps[i].shape[1], height=distance_maps[i].shape[0]).astype(np.float32)
+        projected_pixels = utils3d.np.uv_to_pixel(np.clip(projected_uv, 0, 1), width=distance_maps[i].shape[1], height=distance_maps[i].shape[0]).astype(np.float32)
         
         log_splitted_distance = np.log(distance_maps[i])
         panorama_log_distance_map = np.where(projection_valid_mask, cv2.remap(log_splitted_distance, projected_pixels[..., 0], projected_pixels[..., 1], cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE), 0)

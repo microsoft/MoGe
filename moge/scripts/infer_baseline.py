@@ -117,12 +117,12 @@ def main(ctx: click.Context, baseline_code_path: str, input_path: str, output_pa
             assert any(k in output for k in ['points_metric', 'points_scale_invariant', 'points_affine_invariant']), 'No point map found in output'
             points = next(output[k] for k in ['points_metric', 'points_scale_invariant', 'points_affine_invariant'] if k in output).cpu().numpy()
             mask = output['mask'] if 'mask' in output else np.ones_like(points[..., 0], dtype=bool)
-            normals, normals_mask = utils3d.numpy.points_to_normals(points, mask=mask)
-            faces, vertices, vertex_colors, vertex_uvs = utils3d.numpy.image_mesh(
+            normals, normals_mask = utils3d.np.point_map_to_normal_map(points, mask=mask)
+            faces, vertices, vertex_colors, vertex_uvs = utils3d.np.build_mesh_from_map(
                 points,
                 image_np.astype(np.float32) / 255,
-                utils3d.numpy.image_uv(width=width, height=height),
-                mask=mask & ~(utils3d.numpy.depth_edge(depth, rtol=threshold, mask=mask) & utils3d.numpy.normals_edge(normals, tol=5, mask=normals_mask)),
+                utils3d.np.uv_map(height, width),
+                mask=mask & ~(utils3d.np.depth_map_edge(depth, rtol=threshold, mask=mask) & utils3d.np.normal_map_edge(normals, tol=5, mask=normals_mask)),
                 tri=True
             )
             # When exporting the model, follow the OpenGL coordinate conventions:

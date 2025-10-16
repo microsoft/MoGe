@@ -36,6 +36,8 @@ from moge.train.losses import (
     normal_loss, 
     mask_l2_loss, 
     mask_bce_loss,
+    metric_scale_loss,
+    normal_map_loss,
     monitoring, 
 )
 from moge.train.utils import build_optimizer, build_lr_scheduler
@@ -48,7 +50,7 @@ from moge.test.metrics import compute_metrics
 @click.command()
 @click.option('--config', 'config_path', type=str, default='configs/debug.json')
 @click.option('--workspace', type=str, default='workspace/debug', help='Path to the workspace')
-@click.option('--checkpoint', 'checkpoint_path', type=str, default=None, help='Path to the checkpoint to load')
+@click.option('--checkpoint', 'checkpoint_path', type=str, default=None, help='Path to the checkpoint to load. "latest" to load latest checkpoint in workspace, integer to load by step number')
 @click.option('--batch_size_forward', type=int, default=8, help='Batch size for each forward pass on each device')
 @click.option('--gradient_accumulation_steps', type=int, default=1, help='Number of steps to accumulate gradients')
 @click.option('--enable_gradient_checkpointing', type=bool, default=True, help='Use gradient checkpointing in backbone')
@@ -141,12 +143,15 @@ def main(
     # Attempt to load checkpoint
     checkpoint: Dict[str, Any]
     with accelerator.local_main_process_first():
-        if checkpoint_path.endswith('.pt'):
+        if checkpoint_path is None:
+            # - No checkpoint
+            checkpoint = None
+        elif checkpoint_path.endswith('.pt'):
             # - Load specific checkpoint file
             print(f'Load checkpoint: {checkpoint_path}')
             checkpoint = torch.load(checkpoint_path, map_location='cpu', weights_only=True)
         elif checkpoint_path == "latest": 
-            # - Load latest
+            # - Load latest checkpoint
             checkpoint_path = Path(workspace, 'checkpoint', 'latest.pt')
             if checkpoint_path.exists():
                 print(f'Load checkpoint: {checkpoint_path}')
@@ -163,8 +168,9 @@ def main(
                         print(f'Load EMA model checkpoint: {checkpoint_ema_model_path}')
                         checkpoint['ema_model'] = torch.load(checkpoint_ema_model_path, map_location='cpu', weights_only=True)['model']
             else:
+                print(f'No latest checkpoint found. Start from scratch.')
                 checkpoint = None
-        elif checkpoint_path is not None:
+        else:
             # - Load by step number
             i_step = int(checkpoint_path)
             checkpoint = {'step': i_step}
@@ -178,8 +184,6 @@ def main(
                 if (checkpoint_ema_model_path := Path(workspace, 'checkpoint', f'{i_step:08d}_ema.pt')).exists():
                     print(f'Load EMA model checkpoint: {checkpoint_ema_model_path}')
                     checkpoint['ema_model'] = torch.load(checkpoint_ema_model_path, map_location='cpu', weights_only=True)['model']
-        else:
-            checkpoint = None
 
     if checkpoint is None:
         # Initialize model weights
@@ -241,24 +245,19 @@ def main(
         if vis_every > 0 and accelerator.is_main_process and initial_step == 0:
             save_dir = Path(workspace).joinpath('vis/gt')
             for i_batch, batch in enumerate(tqdm(batches_for_vis, desc='Visualize GT', leave=False)):
-                image, gt_depth, gt_mask, gt_mask_inf, gt_intrinsics, info = batch['image'], batch['depth'], batch['depth_mask'], batch['depth_mask_inf'], batch['intrinsics'], batch['info']
-                gt_points = utils3d.torch.depth_to_points(gt_depth, intrinsics=gt_intrinsics)
-                gt_normal, gt_normal_mask = utils3d.torch.points_to_normals(gt_points, gt_mask)
+                image, gt_depth, gt_normal, gt_intrinsics, info = batch['image'], batch['depth'], batch['normal'], batch['intrinsics'], batch['info']
+                gt_points = utils3d.pt.depth_map_to_point_map(gt_depth, intrinsics=gt_intrinsics)
                 for i_instance in range(batch['image'].shape[0]):
                     idx = i_batch * batch_size_forward + i_instance
                     image_i = (image[i_instance].numpy().transpose(1, 2, 0) * 255).astype(np.uint8)
                     gt_depth_i = gt_depth[i_instance].numpy()
-                    gt_mask_i = gt_mask[i_instance].numpy()
-                    gt_mask_inf_i = gt_mask_inf[i_instance].numpy()
                     gt_points_i = gt_points[i_instance].numpy()
                     gt_normal_i = gt_normal[i_instance].numpy()
                     save_dir.joinpath(f'{idx:04d}').mkdir(parents=True, exist_ok=True)
                     cv2.imwrite(str(save_dir.joinpath(f'{idx:04d}/image.jpg')), cv2.cvtColor(image_i, cv2.COLOR_RGB2BGR))
                     cv2.imwrite(str(save_dir.joinpath(f'{idx:04d}/points.exr')), cv2.cvtColor(gt_points_i, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_FLOAT])
-                    cv2.imwrite(str(save_dir.joinpath(f'{idx:04d}/mask.png')), gt_mask_i * 255)
-                    cv2.imwrite(str(save_dir.joinpath(f'{idx:04d}/depth_vis.png')), cv2.cvtColor(colorize_depth(gt_depth_i, gt_mask_i), cv2.COLOR_RGB2BGR))
+                    cv2.imwrite(str(save_dir.joinpath(f'{idx:04d}/depth_vis.png')), cv2.cvtColor(colorize_depth(gt_depth_i), cv2.COLOR_RGB2BGR))
                     cv2.imwrite(str(save_dir.joinpath(f'{idx:04d}/normal.png')), cv2.cvtColor(colorize_normal(gt_normal_i), cv2.COLOR_RGB2BGR))
-                    cv2.imwrite(str(save_dir.joinpath(f'{idx:04d}/mask_inf.png')), gt_mask_inf_i * 255)
                     with save_dir.joinpath(f'{idx:04d}/info.json').open('w') as f:
                         json.dump(info[i_instance], f)
 
@@ -273,13 +272,13 @@ def main(
             while i_accumulate < gradient_accumulation_steps:
                 # Load batch
                 batch = train_data_pipe.get()
-                image, gt_depth, gt_mask, gt_mask_fin, gt_mask_inf, gt_intrinsics, label_type, is_metric = batch['image'], batch['depth'], batch['depth_mask'], batch['depth_mask_fin'], batch['depth_mask_inf'], batch['intrinsics'], batch['label_type'], batch['is_metric']
-                image, gt_depth, gt_mask, gt_mask_fin, gt_mask_inf, gt_intrinsics = image.to(device), gt_depth.to(device), gt_mask.to(device), gt_mask_fin.to(device), gt_mask_inf.to(device), gt_intrinsics.to(device)
+                image, gt_depth, gt_normal, gt_mask_fin, gt_mask_inf, gt_intrinsics, label_type, is_metric = batch['image'], batch['depth'], batch['normal'], batch['depth_mask_fin'], batch['depth_mask_inf'], batch['intrinsics'], batch['label_type'], batch['is_metric']
+                image, gt_depth, gt_normal, gt_mask_fin, gt_mask_inf, gt_intrinsics = image.to(device), gt_depth.to(device), gt_normal.to(device), gt_mask_fin.to(device), gt_mask_inf.to(device), gt_intrinsics.to(device)
                 current_batch_size = image.shape[0]
                 if all(label == 'invalid' for label in label_type):
                     continue            # NOTE: Skip all-invalid batches to avoid messing up the optimizer.
                 
-                gt_points = utils3d.torch.depth_to_points(gt_depth, intrinsics=gt_intrinsics)
+                gt_points = utils3d.pt.depth_map_to_point_map(gt_depth, intrinsics=gt_intrinsics)
                 gt_focal = 1 / (1 / gt_intrinsics[..., 0, 0] ** 2 + 1 / gt_intrinsics[..., 1, 1] ** 2) ** 0.5
 
                 with accelerator.accumulate(model):
@@ -290,7 +289,7 @@ def main(
                         num_tokens = accelerate.utils.broadcast_object_list([random.randint(*config['model']['num_tokens_range'])])[0]
                     with torch.autocast(device_type=accelerator.device.type, dtype=torch.float16, enabled=enable_mixed_precision):
                         output = model(image, num_tokens=num_tokens)
-                    pred_points, pred_mask, pred_metric_scale = output['points'], output['mask'], output.get('metric_scale', None)
+                    pred_points, pred_mask, pred_normal, pred_metric_scale = (output.get(k, None) for k in ['points', 'mask', 'normal', 'metric_scale'])
 
                     # Compute loss (per instance)
                     loss_list, weight_list = [], []
@@ -301,17 +300,22 @@ def main(
                         for k, v in config['loss'][label_type[i]].items():
                             weight_dict[k] = v['weight']
                             if v['function'] == 'affine_invariant_global_loss':
-                                loss_dict[k], misc_dict[k], gt_metric_scale = affine_invariant_global_loss(pred_points[i], gt_points[i], gt_mask[i], **v['params'])
+                                loss_dict[k], misc_dict[k], gt_metric_scale = affine_invariant_global_loss(pred_points[i], gt_points[i], **v['params'])
                             elif v['function'] == 'affine_invariant_local_loss':
-                                loss_dict[k], misc_dict[k] = affine_invariant_local_loss(pred_points[i], gt_points[i], gt_mask[i], gt_focal[i], gt_metric_scale, **v['params'])
+                                loss_dict[k], misc_dict[k] = affine_invariant_local_loss(pred_points[i], gt_points[i], gt_focal[i], gt_metric_scale, **v['params'])
                             elif v['function'] == 'normal_loss':
-                                loss_dict[k], misc_dict[k] = normal_loss(pred_points[i], gt_points[i], gt_mask[i])
+                                loss_dict[k], misc_dict[k] = normal_loss(pred_points[i], gt_points[i])
                             elif v['function'] == 'edge_loss':
-                                loss_dict[k], misc_dict[k] = edge_loss(pred_points[i], gt_points[i], gt_mask[i])
+                                loss_dict[k], misc_dict[k] = edge_loss(pred_points[i], gt_points[i])
+                            elif v['function'] == 'normal_map_loss':
+                                loss_dict[k], misc_dict[k] = normal_map_loss(pred_normal[i], gt_normal[i])
                             elif v['function'] == 'mask_bce_loss':
                                 loss_dict[k], misc_dict[k] = mask_bce_loss(pred_mask[i], gt_mask_fin[i], gt_mask_inf[i])
                             elif v['function'] == 'mask_l2_loss':
                                 loss_dict[k], misc_dict[k] = mask_l2_loss(pred_mask[i], gt_mask_fin[i], gt_mask_inf[i])
+                            elif v['function'] == 'metric_scale_loss':
+                                if is_metric[i] and pred_metric_scale is not None:
+                                    loss_dict[k], misc_dict[k] = metric_scale_loss(pred_metric_scale[i], gt_metric_scale)
                             else:
                                 raise ValueError(f'Undefined loss function: {v["function"]}')
                         weight_dict = {'.'.join(k): v for k, v in flatten_nested_dict(weight_dict).items()}
@@ -425,25 +429,30 @@ def main(
                 save_dir.mkdir(parents=True, exist_ok=True)
                 with torch.inference_mode():
                     for i_batch, batch in enumerate(tqdm(batches_for_vis, desc=f'Visualize: {i_step:08d}', leave=False)):
-                        image, gt_depth, gt_mask, gt_intrinsics = batch['image'], batch['depth'], batch['depth_mask'], batch['intrinsics']
-                        image, gt_depth, gt_mask, gt_intrinsics = image.to(device), gt_depth.to(device), gt_mask.to(device), gt_intrinsics.to(device)
+                        image, gt_depth, gt_intrinsics = batch['image'], batch['depth'], batch['intrinsics']
+                        image, gt_depth, gt_intrinsics = image.to(device), gt_depth.to(device), gt_intrinsics.to(device)
                         
                         output = unwrapped_model.infer(image)
-                        pred_points, pred_depth, pred_mask = output['points'].cpu().numpy(), output['depth'].cpu().numpy(), output['mask'].cpu().numpy()
-                        image = image.cpu().numpy()
+                        pred_points = output['points'].cpu().numpy() if 'points' in output else None
+                        pred_depth = output['depth'].cpu().numpy() if 'depth' in output else None
+                        pred_mask =  output['mask'].cpu().numpy() if 'mask' in output else None
+                        pred_normal = output['normal'].cpu().numpy() if 'normal' in output else None
+                        pred_uncertainty = output['uncertainty'].cpu().numpy() if 'uncertainty' in output else None
+                        image = (image.cpu().numpy().transpose(0, 2, 3, 1) * 255).astype(np.uint8)
 
                         for i_instance in range(image.shape[0]):
                             idx = i_batch * batch_size_forward + i_instance
-                            image_i = (image[i_instance].transpose(1, 2, 0) * 255).astype(np.uint8)
-                            pred_points_i = pred_points[i_instance]
-                            pred_mask_i = pred_mask[i_instance]
-                            pred_depth_i = pred_depth[i_instance]
                             save_dir.joinpath(f'{idx:04d}').mkdir(parents=True, exist_ok=True)
-                            cv2.imwrite(str(save_dir.joinpath(f'{idx:04d}/image.jpg')), cv2.cvtColor(image_i, cv2.COLOR_RGB2BGR))
-                            cv2.imwrite(str(save_dir.joinpath(f'{idx:04d}/points.exr')), cv2.cvtColor(pred_points_i, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_FLOAT])
-                            cv2.imwrite(str(save_dir.joinpath(f'{idx:04d}/mask.png')), pred_mask_i * 255)
-                            cv2.imwrite(str(save_dir.joinpath(f'{idx:04d}/depth_vis.png')), cv2.cvtColor(colorize_depth(pred_depth_i, pred_mask_i), cv2.COLOR_RGB2BGR))
-
+                            cv2.imwrite(str(save_dir.joinpath(f'{idx:04d}/image.jpg')), cv2.cvtColor(image[i_instance], cv2.COLOR_RGB2BGR))
+                            if pred_points is not None:
+                                cv2.imwrite(str(save_dir.joinpath(f'{idx:04d}/points.exr')), cv2.cvtColor(pred_points[i_instance], cv2.COLOR_RGB2BGR), [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_FLOAT])
+                            if pred_mask is not None:
+                                cv2.imwrite(str(save_dir.joinpath(f'{idx:04d}/mask.png')), pred_mask[i_instance] * 255)
+                            if pred_depth is not None:
+                                cv2.imwrite(str(save_dir.joinpath(f'{idx:04d}/depth_vis.png')), cv2.cvtColor(colorize_depth(pred_depth[i_instance], pred_mask[i_instance] if pred_mask is not None else None), cv2.COLOR_RGB2BGR))
+                            if pred_normal is not None:
+                                cv2.imwrite(str(save_dir.joinpath(f'{idx:04d}/normal_vis.png')), cv2.cvtColor(colorize_normal(pred_normal[i_instance], pred_mask[i_instance] if pred_mask is not None else None), cv2.COLOR_RGB2BGR))
+                            
             pbar.set_postfix({'loss': loss.item()}, refresh=False)
             pbar.update(1)
 
