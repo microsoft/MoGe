@@ -38,15 +38,15 @@ def main(
     from tqdm import tqdm
     import trimesh
 
-    from moge.utils.io import read_image, read_depth, read_meta
+    from moge.utils.io import read_image, read_depth, read_json
     from moge.utils.vis import colorize_depth, colorize_normal
 
     filepaths = sorted(p.parent for p in Path(folder_or_path).rglob('meta.json')) 
 
     for filepath in tqdm(filepaths):
         image = read_image(Path(filepath, 'image.jpg'))
-        depth, unit = read_depth(Path(filepath, depth_filename))
-        meta = read_meta(Path(filepath,'meta.json'))
+        depth = read_depth(Path(filepath, depth_filename))
+        meta = read_json(Path(filepath,'meta.json'))
         depth_mask = np.isfinite(depth)
         depth_mask_inf = (depth == np.inf)
         intrinsics = np.array(meta['intrinsics'])

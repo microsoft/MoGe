@@ -8,9 +8,9 @@ import torch
 from PIL import Image
 import cv2
 import utils3d
+import pipeline
 
-from ..utils import pipeline
-from ..utils.geometry_numpy import focal_to_fov_numpy, mask_aware_nearest_resize_numpy, norm3d
+from ..utils.geometry_numpy import focal_to_fov_numpy, norm3d
 from ..utils.io import *
 from ..utils.tools import timeit
 
@@ -79,7 +79,7 @@ class EvalDataLoaderPipeline:
         }
         instance['image'] = read_image(Path(path, 'image.jpg'))
 
-        depth, _ = read_depth(Path(path, 'depth.png'))  # ignore depth unit from depth file, use config instead
+        depth = read_depth(Path(path, 'depth.png'))  # ignore depth unit from depth file, use config instead
         instance.update({
             'depth': np.nan_to_num(depth, nan=1, posinf=1, neginf=1),
             'depth_mask': np.isfinite(depth),
@@ -144,7 +144,7 @@ class EvalDataLoaderPipeline:
         rescaled_w, rescaled_h = int(raw_width * raw_pixel_w / tgt_pixel_w), int(raw_height * raw_pixel_h / tgt_pixel_h)
         image = np.array(Image.fromarray(image).resize((rescaled_w, rescaled_h), Image.Resampling.LANCZOS))
 
-        depth, depth_mask = mask_aware_nearest_resize_numpy(depth, depth_mask, (rescaled_w, rescaled_h))
+        depth, depth_mask = utils3d.np.masked_nearest_resize(depth, depth_mask, (rescaled_w, rescaled_h))
         distance = norm3d(utils3d.np.depth_map_to_point_map(depth, intrinsics=intrinsics))
         segmentation_mask = cv2.resize(segmentation_mask, (rescaled_w, rescaled_h), interpolation=cv2.INTER_NEAREST) if segmentation_mask is not None else None
 

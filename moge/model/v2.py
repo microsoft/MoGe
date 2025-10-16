@@ -198,7 +198,7 @@ class MoGeModel(nn.Module):
         num_tokens: int = None,
         resolution_level: int = 9,
         force_projection: bool = True,
-        apply_mask: Literal[False, True, 'blend'] = True,
+        apply_mask: bool = True,
         fov_x: Optional[Union[Number, torch.Tensor]] = None,
         use_fp16: bool = True,
     ) -> Dict[str, torch.Tensor]:

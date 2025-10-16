@@ -9,7 +9,6 @@ import itertools
 import json
 import warnings
 
-
 import click
 
 
@@ -55,8 +54,6 @@ def main(
     import torch
     from PIL import Image
     from tqdm import tqdm
-    import trimesh
-    import trimesh.visual
     import click
 
     from moge.model import import_model_class_by_version
@@ -93,7 +90,6 @@ def main(
     for image_path in (pbar := tqdm(image_paths, desc='Inference', disable=len(image_paths) <= 1)):
         if not image_path.exists():
             raise FileNotFoundError(f'File {image_path} does not exist.')
-        print(image_path)
         image = cv2.cvtColor(cv2.imread(str(image_path)), cv2.COLOR_BGR2RGB)
         height, width = image.shape[:2]
         if resize_to is not None:
@@ -160,6 +156,7 @@ def main(
             save_ply(save_path / 'pointcloud.ply', vertices, np.zeros((0, 3), dtype=np.int32), vertex_colors, vertex_normals)
 
         if show:
+            import trimesh
             trimesh.Trimesh(
                 vertices=vertices,
                 vertex_colors=vertex_colors,
