@@ -86,7 +86,7 @@ def write_image(path: Union[str, os.PathLike, IO], image: np.ndarray, quality: i
         path.write(data)
 
 
-def read_depth(path: Union[str, os.PathLike, IO]) -> Tuple[np.ndarray, float]:
+def read_depth(path: Union[str, os.PathLike, IO]) -> np.ndarray:
     """
     Read a depth image, return float32 depth array of shape (H, W).
     """
@@ -97,33 +97,32 @@ def read_depth(path: Union[str, os.PathLike, IO]) -> Tuple[np.ndarray, float]:
     pil_image = Image.open(io.BytesIO(data))
     near = float(pil_image.info.get('near'))
     far = float(pil_image.info.get('far'))
-    unit = float(pil_image.info.get('unit')) if 'unit' in pil_image.info else None
     depth = np.array(pil_image)
     mask_nan, mask_inf = depth == 0, depth == 65535
     depth = (depth.astype(np.float32) - 1) / 65533
-    depth = near ** (1 - depth) * far ** depth
+    depth = near ** (1 - depth) * far ** depth 
+    if 'unit' in pil_image.info:    # Legacy support for depth units
+        unit = float(pil_image.info.get('unit'))
+        depth = depth * unit
     depth[mask_nan] = np.nan
     depth[mask_inf] = np.inf
-    return depth, unit
+    return depth
 
 
 def write_depth(
     path: Union[str, os.PathLike, IO], 
     depth: np.ndarray, 
-    unit: float = None,
     max_range: float = 1e5,
     compression_level: int = 7,
 ):
     """
     Encode and write a depth image as 16-bit PNG format.
-    ### Parameters:
+    ## Parameters:
     - `path: Union[str, os.PathLike, IO]`
         The file path or file object to write to.
     - `depth: np.ndarray`
         The depth array, float32 array of shape (H, W). 
         May contain `NaN` for invalid values and `Inf` for infinite values.
-    - `unit: float = None`
-        The unit of the depth values.
     
     Depth values are encoded as follows:
     - 0: unknown
@@ -133,7 +132,6 @@ def write_depth(
     metadata is stored in the PNG file as text fields:
     - `near`: the minimum depth value
     - `far`: the maximum depth value
-    - `unit`: the unit of the depth values (optional)
     """
     mask_values, mask_nan, mask_inf = np.isfinite(depth), np.isnan(depth),np.isinf(depth)
 
@@ -149,8 +147,6 @@ def write_depth(
     pnginfo = PngImagePlugin.PngInfo()
     pnginfo.add_text('near', str(near))
     pnginfo.add_text('far', str(far))
-    if unit is not None:
-        pnginfo.add_text('unit', str(unit))
     pil_image.save(path, pnginfo=pnginfo, compress_level=compression_level)
 
 
@@ -229,8 +225,47 @@ def write_normal(path: Union[str, os.PathLike, IO], normal: np.ndarray, compress
         path.write(data)
 
 
-def read_meta(path: Union[str, os.PathLike, IO]) -> Dict[str, Any]:
-    return json.loads(Path(path).read_text())
+def read_mask(path: Union[str, os.PathLike, IO[bytes]]) -> np.ndarray:
+    """
+    Read a binary mask, return bool array of shape (H, W).
+    """
+    if isinstance(path, (str, os.PathLike)):
+        data = Path(path).read_bytes()
+    else:
+        data = path.read()
+    mask = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_UNCHANGED)
+    if len(mask.shape) == 3:
+        mask = mask[..., 0]
+    return mask > 0
 
-def write_meta(path: Union[str, os.PathLike, IO], meta: Dict[str, Any]):
-    Path(path).write_text(json.dumps(meta))
+
+def write_mask(path: Union[str, os.PathLike, IO[bytes]], mask: np.ndarray, compression_level: int = 7):
+    """
+    Write a binary mask, input bool array of shape (H, W).
+    """
+    assert mask.dtype == bool, f"Mask must be bool array, got {mask.dtype}"
+    mask = (mask.astype(np.uint8) * 255).astype(np.uint8)
+    data = cv2.imencode('.png', mask, [cv2.IMWRITE_PNG_COMPRESSION, compression_level])[1].tobytes()
+    if isinstance(path, (str, os.PathLike)):
+        Path(path).write_bytes(data)
+    else:
+        path.write(data)
+
+    
+JSON_TYPE = Union[str, int, float, bool, None, Dict[str, "JSON"], List["JSON"]]
+
+
+def read_json(path: Union[str, os.PathLike, IO[str]]) -> JSON_TYPE:
+    if isinstance(path, (str, os.PathLike)):
+        text = Path(path).read_text()
+    else:
+        text = path.read()
+    return json.loads(text)
+
+
+def write_json(path: Union[str, os.PathLike, IO[str]], content: JSON_TYPE):
+    text = json.dumps(content)
+    if isinstance(path, (str, os.PathLike)):
+        Path(path).write_text(text)
+    else:
+        path.write(text)

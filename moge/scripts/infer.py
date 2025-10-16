@@ -9,7 +9,6 @@ import itertools
 import json
 import warnings
 
-
 import click
 
 
@@ -55,8 +54,6 @@ def main(
     import torch
     from PIL import Image
     from tqdm import tqdm
-    import trimesh
-    import trimesh.visual
     import click
 
     from moge.model import import_model_class_by_version
@@ -91,6 +88,8 @@ def main(
         save_maps_ = save_glb_ = save_ply_ = True
 
     for image_path in (pbar := tqdm(image_paths, desc='Inference', disable=len(image_paths) <= 1)):
+        if not image_path.exists():
+            raise FileNotFoundError(f'File {image_path} does not exist.')
         image = cv2.cvtColor(cv2.imread(str(image_path)), cv2.COLOR_BGR2RGB)
         height, width = image.shape[:2]
         if resize_to is not None:
@@ -115,7 +114,7 @@ def main(
             cv2.imwrite(str(save_path / 'points.exr'), cv2.cvtColor(points, cv2.COLOR_RGB2BGR), [cv2.IMWRITE_EXR_TYPE, cv2.IMWRITE_EXR_TYPE_FLOAT])
             if normal is not None:
                 cv2.imwrite(str(save_path / 'normal.png'), cv2.cvtColor(colorize_normal(normal), cv2.COLOR_RGB2BGR))
-            fov_x, fov_y = utils3d.numpy.intrinsics_to_fov(intrinsics)
+            fov_x, fov_y = utils3d.np.intrinsics_to_fov(intrinsics)
             with open(save_path / 'fov.json', 'w') as f:
                 json.dump({
                     'fov_x': round(float(np.rad2deg(fov_x)), 2),
@@ -124,21 +123,21 @@ def main(
 
         # Export mesh & visulization
         if save_glb_ or save_ply_ or show:
-            mask_cleaned = mask & ~utils3d.numpy.depth_edge(depth, rtol=threshold)
+            mask_cleaned = mask & ~utils3d.np.depth_map_edge(depth, rtol=threshold)
             if normal is None:
-                faces, vertices, vertex_colors, vertex_uvs = utils3d.numpy.image_mesh(
+                faces, vertices, vertex_colors, vertex_uvs = utils3d.np.build_mesh_from_map(
                     points,
                     image.astype(np.float32) / 255,
-                    utils3d.numpy.image_uv(width=width, height=height),
+                    utils3d.np.uv_map(height, width),
                     mask=mask_cleaned,
                     tri=True
                 )
                 vertex_normals = None
             else:
-                faces, vertices, vertex_colors, vertex_uvs, vertex_normals = utils3d.numpy.image_mesh(
+                faces, vertices, vertex_colors, vertex_uvs, vertex_normals = utils3d.np.build_mesh_from_map(
                     points,
                     image.astype(np.float32) / 255,
-                    utils3d.numpy.image_uv(width=width, height=height),
+                    utils3d.np.uv_map(height, width),
                     normal,
                     mask=mask_cleaned,
                     tri=True
@@ -157,6 +156,7 @@ def main(
             save_ply(save_path / 'pointcloud.ply', vertices, np.zeros((0, 3), dtype=np.int32), vertex_colors, vertex_normals)
 
         if show:
+            import trimesh
             trimesh.Trimesh(
                 vertices=vertices,
                 vertex_colors=vertex_colors,

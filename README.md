@@ -35,6 +35,9 @@ https://github.com/user-attachments/assets/8f9ae680-659d-4f7f-82e2-b9ed9d6b988a
 
 ## ✨ News
 
+***(2025-10-16)***
+* Updated training code for MoGe-2.
+
 ***(2025-06-10)***
 
 * ❗**Released MoGe-2**, a state-of-the-art model for monocular geometry, with these new capabilities in one unified model:
@@ -272,14 +275,12 @@ See [LICENSE](LICENSE) for more details.
 If you find our work useful in your research, we gratefully request that you consider citing our paper:
 
 ```
-@misc{wang2024moge,
-    title={MoGe: Unlocking Accurate Monocular Geometry Estimation for Open-Domain Images with Optimal Training Supervision},
-    author={Wang, Ruicheng and Xu, Sicheng and Dai, Cassie and Xiang, Jianfeng and Deng, Yu and Tong, Xin and Yang, Jiaolong},
-    year={2024},
-    eprint={2410.19115},
-    archivePrefix={arXiv},
-    primaryClass={cs.CV},
-    url={https://arxiv.org/abs/2410.19115}, 
+@inproceedings{wang2025moge,
+  title={Moge: Unlocking accurate monocular geometry estimation for open-domain images with optimal training supervision},
+  author={Wang, Ruicheng and Xu, Sicheng and Dai, Cassie and Xiang, Jianfeng and Deng, Yu and Tong, Xin and Yang, Jiaolong},
+  booktitle={Proceedings of the Computer Vision and Pattern Recognition Conference},
+  pages={5261--5271},
+  year={2025}
 }
 
 @misc{wang2025moge2,

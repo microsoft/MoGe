@@ -91,7 +91,7 @@ def main(share: bool, pretrained_model_name_or_path: str, model_version: str, us
         points, depth, mask, normal = output['points'], output['depth'], output['mask'], output.get('normal', None)
 
         if remove_edge:
-            mask_cleaned = mask & ~utils3d.numpy.depth_edge(depth, rtol=0.04)
+            mask_cleaned = mask & ~utils3d.np.depth_map_edge(depth, rtol=0.04)
         else:
             mask_cleaned = mask
         
@@ -110,19 +110,19 @@ def main(share: bool, pretrained_model_name_or_path: str, model_version: str, us
 
         # mesh & pointcloud
         if normal is None:
-            faces, vertices, vertex_colors, vertex_uvs = utils3d.numpy.image_mesh(
+            faces, vertices, vertex_colors, vertex_uvs = utils3d.np.build_mesh_from_map(
                 points,
                 image.astype(np.float32) / 255,
-                utils3d.numpy.image_uv(width=width, height=height),
+                utils3d.np.uv_map(height, width),
                 mask=mask_cleaned,
                 tri=True
             )
             vertex_normals = None
         else:
-            faces, vertices, vertex_colors, vertex_uvs, vertex_normals = utils3d.numpy.image_mesh(
+            faces, vertices, vertex_colors, vertex_uvs, vertex_normals = utils3d.np.build_mesh_from_map(
                 points,
                 image.astype(np.float32) / 255,
-                utils3d.numpy.image_uv(width=width, height=height),
+                utils3d.np.uv_map(height, width),
                 normal,
                 mask=mask_cleaned,
                 tri=True
@@ -176,7 +176,7 @@ def main(share: bool, pretrained_model_name_or_path: str, model_version: str, us
 
         # FOV
         intrinsics = results['intrinsics']
-        fov_x, fov_y = utils3d.numpy.intrinsics_to_fov(intrinsics)
+        fov_x, fov_y = utils3d.np.intrinsics_to_fov(intrinsics)
         fov_x, fov_y = np.rad2deg([fov_x, fov_y])
 
         # messages

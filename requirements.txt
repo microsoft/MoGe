@@ -10,5 +10,5 @@ matplotlib      # ==3.9.2
 trimesh         # ==4.5.1
 pillow          # ==10.4.0
 huggingface_hub # ==0.25.2
-git+https://github.com/EasternJournalist/utils3d.git@c5daf6f6c244d251f252102d09e9b7bcef791a38
-
+git+https://github.com/EasternJournalist/utils3d.git@3fab839f0be9931dac7c8488eb0e1600c236e183
+git+https://github.com/EasternJournalist/pipeline.git@866f059d2a05cde05e4a52211ec5051fd5f276d6

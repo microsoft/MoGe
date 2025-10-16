@@ -31,7 +31,6 @@ def _smooth(err: torch.FloatTensor, beta: float = 0.0) -> torch.FloatTensor:
 def affine_invariant_global_loss(
     pred_points: torch.Tensor, 
     gt_points: torch.Tensor, 
-    mask: torch.Tensor, 
     align_resolution: int = 64, 
     beta: float = 0.0, 
     trunc: float = 1.0, 
@@ -39,8 +38,11 @@ def affine_invariant_global_loss(
 ):
     device = pred_points.device
 
+    mask = torch.isfinite(gt_points).all(dim=-1)
+    gt_points = torch.where(mask[..., None], gt_points, 1)
+
     # Align
-    (pred_points_lr, gt_points_lr), lr_mask = mask_aware_nearest_resize((pred_points, gt_points), mask=mask, size=(align_resolution, align_resolution))
+    pred_points_lr, gt_points_lr, lr_mask = utils3d.pt.masked_nearest_resize(pred_points, gt_points, mask=mask, size=(align_resolution, align_resolution))
     scale, shift = align_points_scale_z_shift(pred_points_lr.flatten(-3, -2), gt_points_lr.flatten(-3, -2), lr_mask.flatten(-2, -1) / gt_points_lr[..., 2].flatten(-2, -1).clamp_min(1e-2), trunc=trunc)
     valid = scale > 0
     scale, shift = torch.where(valid, scale, 0), torch.where(valid[..., None], shift, 0)
@@ -111,7 +113,6 @@ def compute_anchor_sampling_weight(
 def affine_invariant_local_loss(
     pred_points: torch.Tensor, 
     gt_points: torch.Tensor, 
-    gt_mask: torch.Tensor, 
     focal: torch.Tensor, 
     global_scale: torch.Tensor, 
     level: Literal[4, 16, 64], 
@@ -124,8 +125,11 @@ def affine_invariant_local_loss(
     device, dtype = pred_points.device, pred_points.dtype
     *batch_shape, height, width, _ = pred_points.shape
     batch_size = math.prod(batch_shape)
+
+    gt_mask = torch.isfinite(gt_points).all(dim=-1)
+    gt_points = torch.where(gt_mask[..., None], gt_points, 1)
     pred_points, gt_points, gt_mask, focal, global_scale = pred_points.reshape(-1, height, width, 3), gt_points.reshape(-1, height, width, 3), gt_mask.reshape(-1, height, width), focal.reshape(-1), global_scale.reshape(-1) if global_scale is not None else None
-    
+
     # Sample patch anchor points indices [num_total_patches]
     radius_2d = math.ceil(0.5 / level * (height ** 2 + width ** 2) ** 0.5)
     radius_3d = 0.5 / level / focal * gt_points[..., 2]
@@ -168,7 +172,7 @@ def affine_invariant_local_loss(
     pred_patch_points = pred_points[patch_batch_idx[:, None, None], patch_i, patch_j]
     
     # Align patch points
-    (pred_patch_points_lr, gt_patch_points_lr), patch_lr_mask = mask_aware_nearest_resize((pred_patch_points, gt_patch_points), mask=patch_mask, size=(align_resolution, align_resolution))
+    pred_patch_points_lr, gt_patch_points_lr, patch_lr_mask = utils3d.pt.masked_nearest_resize(pred_patch_points, gt_patch_points, mask=patch_mask, size=(align_resolution, align_resolution))
     local_scale, local_shift = align_points_scale_xyz_shift(pred_patch_points_lr.flatten(-3, -2), gt_patch_points_lr.flatten(-3, -2), patch_lr_mask.flatten(-2) / gt_patch_radius_3d[:, None].add(1e-7), trunc=trunc)
     if global_scale is not None:
         scale_differ = local_scale / global_scale[patch_batch_idx]
@@ -202,9 +206,13 @@ def affine_invariant_local_loss(
 
     return loss, misc
 
-def normal_loss(points: torch.Tensor, gt_points: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+
+def normal_loss(points: torch.Tensor, gt_points: torch.Tensor) -> torch.Tensor:
     device, dtype = points.device, points.dtype
     height, width = points.shape[-3:-1]
+
+    mask = torch.isfinite(gt_points).all(dim=-1)
+    gt_points = torch.where(mask[..., None], gt_points, 1)
 
     leftup, rightup, leftdown, rightdown = points[..., :-1, :-1, :], points[..., :-1, 1:, :], points[..., 1:, :-1, :], points[..., 1:, 1:, :]
     upxleft = torch.cross(rightup - rightdown, leftdown - rightdown, dim=-1)
@@ -236,9 +244,12 @@ def normal_loss(points: torch.Tensor, gt_points: torch.Tensor, mask: torch.Tenso
     return loss, {}
 
 
-def edge_loss(points: torch.Tensor, gt_points: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+def edge_loss(points: torch.Tensor, gt_points: torch.Tensor) -> torch.Tensor:
     device, dtype = points.device, points.dtype
     height, width = points.shape[-3:-1]
+
+    mask = torch.isfinite(gt_points).all(dim=-1)
+    gt_points = torch.where(mask[..., None], gt_points, 1)
 
     dx = points[..., :-1, :, :] - points[..., 1:, :, :]
     dy = points[..., :, :-1, :] - points[..., :, 1:, :]
@@ -267,4 +278,17 @@ def mask_l2_loss(pred_mask: torch.Tensor, gt_mask_pos: torch.Tensor, gt_mask_neg
 def mask_bce_loss(pred_mask_prob: torch.Tensor, gt_mask_pos: torch.Tensor, gt_mask_neg: torch.Tensor) -> torch.Tensor:
     loss = (gt_mask_pos | gt_mask_neg) * F.binary_cross_entropy(pred_mask_prob, gt_mask_pos.float(), reduction='none')
     loss = loss.mean(dim=(-2, -1))
+    return loss, {}
+
+
+def metric_scale_loss(scale_pred: torch.Tensor, scale_gt: torch.Tensor):
+    valid = scale_gt > 0
+    return torch.where(valid, F.mse_loss(scale_pred.log(), torch.where(valid, scale_gt.log(), 0), reduction='none'), 0), {}
+
+
+def normal_map_loss(pred_normal: torch.Tensor, gt_normal: torch.Tensor) -> torch.Tensor:
+    mask = torch.isfinite(gt_normal).all(dim=-1)
+    gt_normal = torch.where(mask[..., None], gt_normal, 1)
+
+    loss = (mask * utils3d.pt.angle_between(pred_normal, gt_normal).square()).mean(dim=(-2, -1))
     return loss, {}

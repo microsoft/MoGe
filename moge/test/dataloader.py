@@ -8,9 +8,9 @@ import torch
 from PIL import Image
 import cv2
 import utils3d
+import pipeline
 
-from ..utils import pipeline
-from ..utils.geometry_numpy import focal_to_fov_numpy, mask_aware_nearest_resize_numpy, norm3d
+from ..utils.geometry_numpy import focal_to_fov_numpy, norm3d
 from ..utils.io import *
 from ..utils.tools import timeit
 
@@ -79,7 +79,7 @@ class EvalDataLoaderPipeline:
         }
         instance['image'] = read_image(Path(path, 'image.jpg'))
 
-        depth, _ = read_depth(Path(path, 'depth.png'))  # ignore depth unit from depth file, use config instead
+        depth = read_depth(Path(path, 'depth.png'))  # ignore depth unit from depth file, use config instead
         instance.update({
             'depth': np.nan_to_num(depth, nan=1, posinf=1, neginf=1),
             'depth_mask': np.isfinite(depth),
@@ -117,8 +117,8 @@ class EvalDataLoaderPipeline:
 
         # set target view direction
         cu, cv = 0.5, 0.5
-        direction = utils3d.numpy.unproject_cv(np.array([[cu, cv]], dtype=np.float32), np.array([1.0], dtype=np.float32), intrinsics=intrinsics)[0]
-        R = utils3d.numpy.rotation_matrix_from_vectors(direction, np.array([0, 0, 1], dtype=np.float32))
+        direction = utils3d.np.unproject_cv(np.array([[cu, cv]], dtype=np.float32), np.array([1.0], dtype=np.float32), intrinsics=intrinsics)[0]
+        R = utils3d.np.rotation_matrix_from_vectors(direction, np.array([0, 0, 1], dtype=np.float32))
 
         # restrict target view field within the raw view
         corners = np.array([[0, 0], [0, 1], [1, 1], [1, 0]], dtype=np.float32)
@@ -127,7 +127,7 @@ class EvalDataLoaderPipeline:
 
         warp_horizontal, warp_vertical = abs(1.0 / intrinsics[0, 0]), abs(1.0 / intrinsics[1, 1])
         for i in range(4):
-            intersection, _ = utils3d.numpy.ray_intersection(
+            intersection, _ = utils3d.np.ray_intersection(
                 np.array([0., 0.]), np.array([[tgt_aspect, 1.0], [tgt_aspect, -1.0]]),
                 corners[i - 1], corners[i] - corners[i - 1],
             )
@@ -136,7 +136,7 @@ class EvalDataLoaderPipeline:
 
         # get target view intrinsics
         fx, fy = 1.0 / tgt_horizontal, 1.0 / tgt_vertical
-        tgt_intrinsics = utils3d.numpy.intrinsics_from_focal_center(fx, fy, 0.5, 0.5).astype(np.float32)
+        tgt_intrinsics = utils3d.np.intrinsics_from_focal_center(fx, fy, 0.5, 0.5).astype(np.float32)
         
         # do homogeneous transformation with the rotation and intrinsics
         # 4.1 The image and depth is resized first to approximately the same pixel size as the target image with PIL's antialiasing resampling
@@ -144,20 +144,20 @@ class EvalDataLoaderPipeline:
         rescaled_w, rescaled_h = int(raw_width * raw_pixel_w / tgt_pixel_w), int(raw_height * raw_pixel_h / tgt_pixel_h)
         image = np.array(Image.fromarray(image).resize((rescaled_w, rescaled_h), Image.Resampling.LANCZOS))
 
-        depth, depth_mask = mask_aware_nearest_resize_numpy(depth, depth_mask, (rescaled_w, rescaled_h))
-        distance = norm3d(utils3d.numpy.depth_to_points(depth, intrinsics=intrinsics))
+        depth, depth_mask = utils3d.np.masked_nearest_resize(depth, mask=depth_mask, size=(rescaled_w, rescaled_h))
+        distance = norm3d(utils3d.np.depth_map_to_point_map(depth, intrinsics=intrinsics))
         segmentation_mask = cv2.resize(segmentation_mask, (rescaled_w, rescaled_h), interpolation=cv2.INTER_NEAREST) if segmentation_mask is not None else None
 
         # 4.2 calculate homography warping
         transform = intrinsics @ np.linalg.inv(R) @ np.linalg.inv(tgt_intrinsics)
-        uv_tgt = utils3d.numpy.image_uv(width=tgt_width, height=tgt_height)
+        uv_tgt = utils3d.np.uv_map(tgt_height, tgt_width)
         pts = np.concatenate([uv_tgt, np.ones((tgt_height, tgt_width, 1), dtype=np.float32)], axis=-1) @ transform.T
         uv_remap = pts[:, :, :2] / (pts[:, :, 2:3] + 1e-12)
-        pixel_remap = utils3d.numpy.uv_to_pixel(uv_remap, width=rescaled_w, height=rescaled_h).astype(np.float32)
+        pixel_remap = utils3d.np.uv_to_pixel(uv_remap, width=rescaled_w, height=rescaled_h).astype(np.float32)
         
         tgt_image = cv2.remap(image, pixel_remap[:, :, 0], pixel_remap[:, :, 1], cv2.INTER_LINEAR)
         tgt_distance = cv2.remap(distance, pixel_remap[:, :, 0], pixel_remap[:, :, 1], cv2.INTER_NEAREST)
-        tgt_ray_length = utils3d.numpy.unproject_cv(uv_tgt, np.ones_like(uv_tgt[:, :, 0]), intrinsics=tgt_intrinsics)
+        tgt_ray_length = utils3d.np.unproject_cv(uv_tgt, np.ones_like(uv_tgt[:, :, 0]), intrinsics=tgt_intrinsics)
         tgt_ray_length = (tgt_ray_length[:, :, 0] ** 2 + tgt_ray_length[:, :, 1] ** 2 + tgt_ray_length[:, :, 2] ** 2) ** 0.5
         tgt_depth = tgt_distance / (tgt_ray_length + 1e-12)
         tgt_depth_mask = cv2.remap(depth_mask.astype(np.uint8), pixel_remap[:, :, 0], pixel_remap[:, :, 1], cv2.INTER_NEAREST) > 0
@@ -177,7 +177,7 @@ class EvalDataLoaderPipeline:
             tgt_depth = np.ones_like(tgt_depth)
             instance['label_type'] = 'invalid'
         
-        tgt_pts = utils3d.numpy.unproject_cv(uv_tgt, tgt_depth, intrinsics=tgt_intrinsics)
+        tgt_pts = utils3d.np.unproject_cv(uv_tgt, tgt_depth, intrinsics=tgt_intrinsics)
 
         # Process segmentation labels
         if self.include_segmentation and segmentation_mask is not None:

@@ -365,12 +365,12 @@ class MoGeModel(nn.Module):
                 _, shift = recover_focal_shift(points, mask_binary, focal=focal)
             fx = focal / 2 * (1 + aspect_ratio ** 2) ** 0.5 / aspect_ratio
             fy = focal / 2 * (1 + aspect_ratio ** 2) ** 0.5 
-            intrinsics = utils3d.torch.intrinsics_from_focal_center(fx, fy, 0.5, 0.5)
+            intrinsics = utils3d.pt.intrinsics_from_focal_center(fx, fy, torch.tensor(0.5, device=points.device, dtype=points.dtype), torch.tensor(0.5, device=points.device, dtype=points.dtype))
             depth = points[..., 2] + shift[..., None, None]
             
             # If projection constraint is forced, recompute the point map using the actual depth map
             if force_projection:
-                points = utils3d.torch.depth_to_points(depth, intrinsics=intrinsics)
+                points = utils3d.pt.depth_map_to_point_map(depth, intrinsics=intrinsics)
             else:
                 points = points + torch.stack([torch.zeros_like(shift), torch.zeros_like(shift), shift], dim=-1)[..., None, None, :]
 

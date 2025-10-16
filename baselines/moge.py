@@ -40,7 +40,7 @@ class Baseline(MGEBaselineInterface):
     @torch.inference_mode()
     def infer(self, image: torch.FloatTensor, intrinsics: Optional[torch.FloatTensor] = None):
         if intrinsics is not None:
-            fov_x, _ = utils3d.torch.intrinsics_to_fov(intrinsics)
+            fov_x, _ = utils3d.pt.intrinsics_to_fov(intrinsics)
             fov_x = torch.rad2deg(fov_x)
         else:
             fov_x = None
@@ -62,7 +62,7 @@ class Baseline(MGEBaselineInterface):
     @torch.inference_mode()
     def infer_for_evaluation(self, image: torch.FloatTensor, intrinsics: torch.FloatTensor = None):
         if intrinsics is not None:
-            fov_x, _ = utils3d.torch.intrinsics_to_fov(intrinsics)
+            fov_x, _ = utils3d.pt.intrinsics_to_fov(intrinsics)
             fov_x = torch.rad2deg(fov_x)
         else:
             fov_x = None

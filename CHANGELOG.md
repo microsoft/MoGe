@@ -30,3 +30,11 @@
 ## 2025-06-10
 ### Added
 - Released MoGe-2. 
+
+## 2025-10-16
+### Added
+- Update training code for MoGe-2.
+
+### Changed
+- Refactored training dataloader code for better readability.
+- Removed Git LFS for convenience.

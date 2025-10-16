@@ -135,13 +135,16 @@ class MoGeModel(nn.Module):
             raise ValueError(f"Invalid remap output type: {self.remap_output}")
         return points
     
-    def forward(self, image: torch.Tensor, num_tokens: int) -> Dict[str, torch.Tensor]:
+    def forward(self, image: torch.Tensor, num_tokens: Union[int, torch.LongTensor]) -> Dict[str, torch.Tensor]:
         batch_size, _, img_h, img_w = image.shape
         device, dtype = image.device, image.dtype
 
         aspect_ratio = img_w / img_h
-        base_h, base_w = int((num_tokens / aspect_ratio) ** 0.5), int((num_tokens * aspect_ratio) ** 0.5)
-        num_tokens = base_h * base_w
+        base_h, base_w = (num_tokens / aspect_ratio) ** 0.5, (num_tokens * aspect_ratio) ** 0.5
+        if isinstance(base_h, torch.Tensor):
+            base_h, base_w = base_h.round().long(), base_w.round().long()
+        else:
+            base_h, base_w = round(base_h), round(base_w)
 
         # Backbones encoding
         features, cls_token = self.encoder(image, base_h, base_w, return_class_token=True)
@@ -195,7 +198,7 @@ class MoGeModel(nn.Module):
         num_tokens: int = None,
         resolution_level: int = 9,
         force_projection: bool = True,
-        apply_mask: Literal[False, True, 'blend'] = True,
+        apply_mask: bool = True,
         fov_x: Optional[Union[Number, torch.Tensor]] = None,
         use_fp16: bool = True,
     ) -> Dict[str, torch.Tensor]:
@@ -260,7 +263,7 @@ class MoGeModel(nn.Module):
                         focal = focal[None].expand(points.shape[0])
                     _, shift = recover_focal_shift(points, mask_binary, focal=focal)
                 fx, fy = focal / 2 * (1 + aspect_ratio ** 2) ** 0.5 / aspect_ratio, focal / 2 * (1 + aspect_ratio ** 2) ** 0.5 
-                intrinsics = utils3d.torch.intrinsics_from_focal_center(fx, fy, 0.5, 0.5)
+                intrinsics = utils3d.pt.intrinsics_from_focal_center(fx, fy, torch.tensor(0.5, device=points.device, dtype=points.dtype), torch.tensor(0.5, device=points.device, dtype=points.dtype))
                 points[..., 2] += shift[..., None, None]
                 if mask_binary is not None:
                     mask_binary &= points[..., 2] > 0        # in case depth is contains negative values (which should never happen in practice)
@@ -270,7 +273,7 @@ class MoGeModel(nn.Module):
 
             # If projection constraint is forced, recompute the point map using the actual depth map & intrinsics
             if force_projection and depth is not None:
-                points = utils3d.torch.depth_to_points(depth, intrinsics=intrinsics)
+                points = utils3d.pt.depth_map_to_point_map(depth, intrinsics=intrinsics)
 
             # Apply metric scale
             if metric_scale is not None:

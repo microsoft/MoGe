@@ -96,7 +96,7 @@ def main(
         splitted_distance_maps, splitted_masks = [], []
         for i in trange(0, len(splitted_images), batch_size, desc='Inferring splitted views', disable=len(splitted_images) <= batch_size, leave=False):
             image_tensor = torch.tensor(np.stack(splitted_images[i:i + batch_size]) / 255, dtype=torch.float32, device=device).permute(0, 3, 1, 2)
-            fov_x, fov_y = np.rad2deg(utils3d.numpy.intrinsics_to_fov(np.array(splitted_intriniscs[i:i + batch_size])))
+            fov_x, fov_y = np.rad2deg(utils3d.np.intrinsics_to_fov(np.array(splitted_intriniscs[i:i + batch_size])))
             fov_x = torch.tensor(fov_x, dtype=torch.float32, device=device)
             output = model.infer(image_tensor, fov_x=fov_x, apply_mask=False)
             distance_map, mask = output['points'].norm(dim=-1).cpu().numpy(), output['mask'].cpu().numpy()
@@ -119,7 +119,7 @@ def main(
         panorama_depth = panorama_depth.astype(np.float32)
         panorama_depth = cv2.resize(panorama_depth, (width, height), cv2.INTER_LINEAR)
         panorama_mask = cv2.resize(panorama_mask.astype(np.uint8), (width, height), cv2.INTER_NEAREST) > 0
-        points = panorama_depth[:, :, None] * spherical_uv_to_directions(utils3d.numpy.image_uv(width=width, height=height))
+        points = panorama_depth[:, :, None] * spherical_uv_to_directions(utils3d.np.uv_map(height, width))
         
         # Write outputs
         print('Writing outputs...') if pbar.disable else pbar.set_postfix_str(f'Inferring')
@@ -134,12 +134,12 @@ def main(
 
         # Export mesh & visulization
         if save_glb_ or save_ply_ or show:
-            normals, normals_mask = utils3d.numpy.points_to_normals(points, panorama_mask)
-            faces, vertices, vertex_colors, vertex_uvs = utils3d.numpy.image_mesh(
+            normals, normals_mask = utils3d.np.point_map_to_normal_map(points, panorama_mask)
+            faces, vertices, vertex_colors, vertex_uvs = utils3d.np.build_mesh_from_map(
                 points,
                 image.astype(np.float32) / 255,
-                utils3d.numpy.image_uv(width=width, height=height),
-                mask=panorama_mask & ~(utils3d.numpy.depth_edge(panorama_depth, rtol=threshold) & utils3d.numpy.normals_edge(normals, tol=5, mask=normals_mask)),
+                utils3d.np.uv_map(height, width),
+                mask=panorama_mask & ~(utils3d.np.depth_map_edge(panorama_depth, rtol=threshold) & utils3d.np.normal_map_edge(normals, tol=5, mask=normals_mask)),
                 tri=True
             )
 
