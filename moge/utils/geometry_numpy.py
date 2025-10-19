@@ -131,7 +131,7 @@ def recover_focal_shift_numpy(points: np.ndarray, mask: np.ndarray = None, focal
         return 1., 0.
     
     if focal is None:
-        focal, shift = solve_optimal_focal_shift(uv_lr, points_lr)
+        shift, focal= solve_optimal_focal_shift(uv_lr, points_lr)
     else:
         shift = solve_optimal_shift(uv_lr, points_lr, focal)
 
