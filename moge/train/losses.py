@@ -9,7 +9,6 @@ from ..utils.geometry_torch import (
     weighted_mean, 
     harmonic_mean, 
     geometric_mean,
-    mask_aware_nearest_resize,
     normalized_view_plane_uv,
     angle_diff_vec3
 )
