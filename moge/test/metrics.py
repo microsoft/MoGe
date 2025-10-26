@@ -8,7 +8,6 @@ import utils3d
 
 from ..utils.geometry_torch import (
     weighted_mean, 
-    mask_aware_nearest_resize,
     intrinsics_to_fov
 )
 from ..utils.alignment import (
@@ -126,8 +125,8 @@ def compute_metrics(
     gt_points = gt['points']
 
     height, width = mask.shape[-2:]
-    _, lr_mask, lr_index = mask_aware_nearest_resize(None, mask, (64, 64), return_index=True)
-    
+    lr_mask, lr_index = utils3d.pt.masked_nearest_resize(mask, (64, 64), return_index=True)
+
     only_depth = not any('point' in k for k in pred)
     pred_depth_aligned, pred_points_aligned = None, None
 
