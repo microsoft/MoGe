@@ -1,0 +1,63 @@
+# High-quality MoGrammetry configuration
+# Use for best results, slower processing
+
+# Paths (set these before running)
+colmap_model_path: null  # Set to your COLMAP model path
+image_dir: null           # Set to your images directory
+output_dir: output/quality
+
+# Model
+model_name: Ruicheng/moge-vitl
+
+# Processing settings
+processing:
+  resolution_level: 9     # Maximum quality
+  device: cuda
+  batch_size: 1
+  use_gpu: true
+  save_intermediate: false
+
+# Alignment settings
+alignment:
+  method: roe             # Robust Outlier Estimation
+  use_reprojection: true
+  truncation_threshold: 0.03
+  min_valid_points: 200
+  ransac_iterations: 2000
+
+# Fusion settings
+fusion:
+  voxel_size: null        # Auto-determine
+  outlier_removal: both   # Statistical + radius
+  statistical_nb_neighbors: 30
+  statistical_std_ratio: 2.5
+  radius_nb_points: 16
+  radius: 0.05
+  merge_strategy: weighted
+
+# Mesh settings
+mesh:
+  method: poisson
+  poisson_depth: 10       # High detail
+  poisson_width: 0.0
+  poisson_scale: 1.1
+  poisson_linear_fit: false
+  simplify_mesh: false    # Keep full detail
+  target_faces: null
+
+# Output settings
+output:
+  save_point_cloud: true
+  save_mesh: true
+  save_depth_maps: false
+  save_normal_maps: false
+  formats:
+    - ply
+    - glb
+  export_report: true
+
+# Logging
+log_level: INFO
+log_file: null
+progress_bar: true
+verbose: false
