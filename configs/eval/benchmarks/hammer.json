@@ -1,0 +1,10 @@
+{
+    "HAMMER": {
+        "path": "data/eval/HAMMER",
+        "width": 1664,
+        "height": 832,
+        "split": ".index.txt",
+        "depth_unit": 1,
+        "has_sharp_boundary": true
+    }
+}

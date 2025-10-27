@@ -1,0 +1,8 @@
+{
+    "GSO": {
+        "path": "data/eval/GSO",
+        "width": 512,
+        "height": 512,
+        "split": ".index.txt"
+    }
+}

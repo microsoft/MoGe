@@ -2,15 +2,24 @@ from typing import *
 import time
 from pathlib import Path
 from numbers import Number
+from functools import wraps
+import warnings
+import math
+import json
+import os
+import importlib
+import importlib.util
 
 
 def catch_exception(fn):
+    @wraps(fn)
     def wrapper(*args, **kwargs):
         try:
             return fn(*args, **kwargs)
         except Exception as e:
             import traceback
-            print(f"Exception in {fn.__name__}({', '.join(repr(arg) for arg in args)}, {', '.join(f'{k}={v!r}' for k, v in kwargs.items())})")
+            print(f"Exception in {fn.__name__}",  end='r')
+            # print({', '.join(repr(arg) for arg in args)}, {', '.join(f'{k}={v!r}' for k, v in kwargs.items())})
             traceback.print_exc(chain=False)
             time.sleep(0.1)
             return None
@@ -63,10 +72,11 @@ def key_average(list_of_dicts: list) -> Dict[str, Any]:
     _nested_dict_keys = sorted(_nested_dict_keys)
     result = {}
     for k in _nested_dict_keys:
-        values = [
-            get_nested_dict(d, k) for d in list_of_dicts
-            if get_nested_dict(d, k) is not None
-        ]
+        values = []
+        for d in list_of_dicts:
+            v = get_nested_dict(d, k)
+            if v is not None and not math.isnan(v):
+                values.append(v)
         avg = sum(values) / len(values) if values else float('nan')
         set_nested_dict(result, k, avg)
     return result
@@ -117,14 +127,6 @@ def write_jsonl(data: List[dict], file):
             f.write(json.dumps(item) + '\n')
 
 
-def save_metrics(save_path: Union[str, Path], all_metrics: Dict[str, List[Dict]]):
-    import pandas as pd
-    import json
-    
-    with open(save_path, 'w') as f:
-        json.dump(all_metrics, f, indent=4)
-
-
 def to_hierachical_dataframe(data: List[Dict[Tuple[str, ...], Any]]):
     import pandas as pd
     data = [flatten_nested_dict(d) for d in data]
@@ -150,13 +152,13 @@ def recursive_replace(d: Union[List, Dict, str], mapping: Dict[str, str]):
 class timeit:
     _history: Dict[str, List['timeit']] = {}
 
-    def __init__(self, name: str = None, verbose: bool = True, multiple: bool = False):
+    def __init__(self, name: str = None, verbose: bool = True, average: bool = False):
         self.name = name
         self.verbose = verbose
         self.start = None
         self.end = None
-        self.multiple = multiple
-        if multiple and name not in timeit._history:
+        self.average = average
+        if average and name not in timeit._history:
             timeit._history[name] = []
 
     def __call__(self, func: Callable):
@@ -176,6 +178,7 @@ class timeit:
         
     def __enter__(self):
         self.start = time.time()
+        return self
 
     @property
     def time(self) -> float:
@@ -184,19 +187,24 @@ class timeit:
         return self.end - self.start
 
     @property
+    def average_time(self) -> float:
+        assert self.average, "Average time not available."
+        return sum(t.time for t in timeit._history[self.name]) / len(timeit._history[self.name])
+
+    @property
     def history(self) -> List['timeit']:
         return timeit._history.get(self.name, [])
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.end = time.time()
-        if self.multiple:
+        if self.average:
             timeit._history[self.name].append(self)
         if self.verbose:
-            if self.multiple:
-                avg = sum(t.time for t in timeit._history[self.name]) / len(timeit._history[self.name])
-                print(f"{self.name or 'It'} took {avg} seconds in average.")
+            if self.average:
+                avg = self.average_time
+                print(f"{self.name or 'It'} took {avg:.6f} seconds in average.")
             else:
-                print(f"{self.name or 'It'} took {self.time} seconds.")
+                print(f"{self.name or 'It'} took {self.time:.6f} seconds.")
 
 
 def strip_common_prefix_suffix(strings: List[str]) -> List[str]:
@@ -230,6 +238,7 @@ def multithead_execute(inputs: List[Any], num_workers: int, pbar = None):
         ):  
             pbar.refresh()
             @catch_exception
+            @suppress_traceback
             def _fn(input):
                 ret = fn(input)
                 pbar.update()
@@ -238,3 +247,43 @@ def multithead_execute(inputs: List[Any], num_workers: int, pbar = None):
             executor.shutdown(wait=True)
     
     return decorator
+
+
+def suppress_traceback(fn):
+    @wraps(fn)
+    def wrapper(*args, **kwargs):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            e.__traceback__ = e.__traceback__.tb_next.tb_next
+            raise
+    return wrapper
+
+
+class no_warnings:
+    def __init__(self, action: str = 'ignore', **kwargs):
+        self.action = action
+        self.filter_kwargs = kwargs
+    
+    def __call__(self, fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            with warnings.catch_warnings():
+                warnings.simplefilter(self.action, **self.filter_kwargs)
+                return fn(*args, **kwargs)
+        return wrapper  
+    
+    def __enter__(self):
+        self.warnings_manager = warnings.catch_warnings()
+        self.warnings_manager.__enter__()
+        warnings.simplefilter(self.action, **self.filter_kwargs)
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.warnings_manager.__exit__(exc_type, exc_val, exc_tb)
+
+
+def import_file_as_module(file_path: Union[str, os.PathLike], module_name: str):
+    spec = importlib.util.spec_from_file_location(module_name, file_path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module

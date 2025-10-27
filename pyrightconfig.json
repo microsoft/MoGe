@@ -1,9 +1,8 @@
 {   
     "include": [
         "moge", 
-        "utils3d",
-        "infer.py",
-        "app.py"
+        "scripts",
+        "baselines"
     ],
     "ignore": [
         "**"

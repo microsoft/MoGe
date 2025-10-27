@@ -11,6 +11,7 @@ import logging
 import os
 import warnings
 
+import torch.nn.functional as F
 from torch import Tensor
 from torch import nn
 
@@ -53,21 +54,31 @@ class Attention(nn.Module):
         self.proj = nn.Linear(dim, dim, bias=proj_bias)
         self.proj_drop = nn.Dropout(proj_drop)
 
+    # # Deprecated implementation, extremely slow
+    # def forward(self, x: Tensor, attn_bias=None) -> Tensor:
+    #     B, N, C = x.shape
+    #     qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
+    #     q, k, v = qkv[0] * self.scale, qkv[1], qkv[2]
+    #     attn = q @ k.transpose(-2, -1)
+    #     attn = attn.softmax(dim=-1)
+    #     attn = self.attn_drop(attn)
+    #     x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+    #     x = self.proj(x)
+    #     x = self.proj_drop(x)
+    #     return x
+
     def forward(self, x: Tensor, attn_bias=None) -> Tensor:
         B, N, C = x.shape
-        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
-        
-        q, k, v = qkv[0] * self.scale, qkv[1], qkv[2]
-        attn = q @ k.transpose(-2, -1)
+        qkv = self.qkv(x).reshape(B, N, 3, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)  # (3, B, H, N, C // H)
 
-        attn = attn.softmax(dim=-1)
-        attn = self.attn_drop(attn)
+        q, k, v = qkv.unbind(0)      # (B, H, N, C // H)
 
-        x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        x = F.scaled_dot_product_attention(q, k, v, attn_bias)
+        x = x.permute(0, 2, 1, 3).reshape(B, N, C) 
+
         x = self.proj(x)
         x = self.proj_drop(x)
         return x
-
 
 class MemEffAttention(Attention):
     def forward(self, x: Tensor, attn_bias=None) -> Tensor:

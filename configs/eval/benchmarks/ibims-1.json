@@ -1,0 +1,10 @@
+{
+    "iBims-1": {
+        "path": "data/eval/iBims-1",
+        "width": 640,
+        "height": 480,
+        "split": ".index.txt",
+        "include_segmentation": true,
+        "has_sharp_boundary": true
+    }
+}

@@ -1,0 +1,9 @@
+{    
+    "Spring": {
+        "path": "data/eval/Spring",
+        "width": 1920,
+        "height": 1080,
+        "split": ".test.txt",
+        "has_sharp_boundary": true
+    }
+}
