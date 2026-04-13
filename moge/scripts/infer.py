@@ -1,13 +1,15 @@
 import os
+
 os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '1'
-from pathlib import Path
 import sys
+from pathlib import Path
+
 if (_package_root := str(Path(__file__).absolute().parents[2])) not in sys.path:
     sys.path.insert(0, _package_root)
-from typing import *
 import itertools
 import json
 import warnings
+from typing import *
 
 import click
 
@@ -52,15 +54,12 @@ def main(
     import cv2
     import numpy as np
     import torch
-    from PIL import Image
+    import utils3d
     from tqdm import tqdm
-    import click
 
     from moge.model import import_model_class_by_version
     from moge.utils.io import save_glb, save_ply
     from moge.utils.vis import colorize_depth, colorize_normal
-    from moge.utils.geometry_numpy import depth_occlusion_edge_numpy
-    import utils3d
 
     device = torch.device(device_name)
 

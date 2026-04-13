@@ -1,17 +1,18 @@
 import os
+
 os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '1'
-from pathlib import Path
 import sys
+from pathlib import Path
+
 if (_package_root := str(Path(__file__).absolute().parents[2])) not in sys.path:
     sys.path.insert(0, _package_root)
-from typing import *
 import itertools
-import json
 import warnings
+from typing import *
 
 import click
 
-         
+
 @click.command(help='Inference script for panorama images')
 @click.option('--input', '-i', 'input_path', type=click.Path(exists=True), required=True, help='Input image or folder path. "jpg" and "png" are supported.')
 @click.option('--output', '-o', 'output_path', type=click.Path(), default='./output', help='Output folder path')
@@ -44,21 +45,21 @@ def main(
     # Lazy import
     import cv2
     import numpy as np
-    from numpy import ndarray
     import torch
-    from PIL import Image
-    from tqdm import tqdm, trange
     import trimesh
     import trimesh.visual
-    from scipy.sparse import csr_array, hstack, vstack
-    from scipy.ndimage import convolve
-    from scipy.sparse.linalg import lsmr
-
     import utils3d
+    from tqdm import tqdm, trange
+
     from moge.model.v1 import MoGeModel
     from moge.utils.io import save_glb, save_ply
+    from moge.utils.panorama import (
+        get_panorama_cameras,
+        merge_panorama_depth,
+        spherical_uv_to_directions,
+        split_panorama_image,
+    )
     from moge.utils.vis import colorize_depth
-    from moge.utils.panorama import spherical_uv_to_directions, get_panorama_cameras, split_panorama_image, merge_panorama_depth
 
     
     device = torch.device(device_name)
@@ -91,7 +92,7 @@ def main(
         splitted_images = split_panorama_image(image, splitted_extrinsics, splitted_intriniscs, splitted_resolution)
 
         # Infer each view 
-        print('Inferring...') if pbar.disable else pbar.set_postfix_str(f'Inferring')
+        print('Inferring...') if pbar.disable else pbar.set_postfix_str('Inferring')
 
         splitted_distance_maps, splitted_masks = [], []
         for i in trange(0, len(splitted_images), batch_size, desc='Inferring splitted views', disable=len(splitted_images) <= batch_size, leave=False):
@@ -112,7 +113,7 @@ def main(
                 cv2.imwrite(str(splitted_save_path / f'{i:02d}_distance_vis.png'), cv2.cvtColor(colorize_depth(splitted_distance_maps[i], splitted_masks[i]), cv2.COLOR_RGB2BGR))
 
         # Merge
-        print('Merging...') if pbar.disable else pbar.set_postfix_str(f'Merging')
+        print('Merging...') if pbar.disable else pbar.set_postfix_str('Merging')
 
         merging_width, merging_height = min(1920, width), min(960, height)
         panorama_depth, panorama_mask = merge_panorama_depth(merging_width, merging_height, splitted_distance_maps, splitted_masks, splitted_extrinsics, splitted_intriniscs)
@@ -122,7 +123,7 @@ def main(
         points = panorama_depth[:, :, None] * spherical_uv_to_directions(utils3d.np.uv_map(height, width))
         
         # Write outputs
-        print('Writing outputs...') if pbar.disable else pbar.set_postfix_str(f'Inferring')
+        print('Writing outputs...') if pbar.disable else pbar.set_postfix_str('Inferring')
         save_path = Path(output_path, image_path.relative_to(input_path).parent, image_path.stem)
         save_path.mkdir(exist_ok=True, parents=True)
         if save_maps_:

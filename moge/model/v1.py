@@ -1,10 +1,8 @@
-from typing import *
-from numbers import Number
-from functools import partial
-from pathlib import Path
 import importlib
 import warnings
-import json
+from numbers import Number
+from pathlib import Path
+from typing import *
 
 import torch
 import torch.nn as nn
@@ -15,10 +13,10 @@ import torch.version
 import utils3d
 from huggingface_hub import hf_hub_download
 
-
-from ..utils.geometry_torch import normalized_view_plane_uv, recover_focal_shift, gaussian_blur_2d, dilate_with_mask
-from .utils import wrap_dinov2_attention_with_sdpa, wrap_module_with_gradient_checkpointing, unwrap_module_with_gradient_checkpointing
-from ..utils.tools import timeit
+from ..utils.geometry_torch import normalized_view_plane_uv, recover_focal_shift
+from .utils import (
+    wrap_module_with_gradient_checkpointing,
+)
 
 
 class ResidualConvBlock(nn.Module):  

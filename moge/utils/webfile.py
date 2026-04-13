@@ -1,6 +1,7 @@
-import requests  
-from typing import *  
-  
+from typing import *
+
+import requests
+
 __all__ = ["WebFile"]
 
 

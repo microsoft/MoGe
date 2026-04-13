@@ -1,18 +1,16 @@
-import os
-from typing import *
-from pathlib import Path
 import math
+from pathlib import Path
+from typing import *
 
-import numpy as np
-import torch
-from PIL import Image
 import cv2
-import utils3d
+import numpy as np
 import pipeline
+import torch
+import utils3d
+from PIL import Image
 
-from ..utils.geometry_numpy import focal_to_fov_numpy, norm3d
+from ..utils.geometry_numpy import norm3d
 from ..utils.io import *
-from ..utils.tools import timeit
 
 
 class EvalDataLoaderPipeline:

@@ -5,10 +5,9 @@
 
 import os
 from typing import Callable, Optional
-import warnings
 
-from torch import Tensor, nn
 import torch.nn.functional as F
+from torch import Tensor, nn
 
 
 class SwiGLUFFN(nn.Module):

@@ -9,17 +9,15 @@
 
 import logging
 import os
-from typing import Callable, List, Any, Tuple, Dict
-import warnings
+from typing import Any, Callable, Dict, List, Tuple
 
 import torch
-from torch import nn, Tensor
+from torch import Tensor, nn
 
 from .attention import Attention, MemEffAttention
 from .drop_path import DropPath
 from .layer_scale import LayerScale
 from .mlp import Mlp
-
 
 logger = logging.getLogger("dinov2")
 
@@ -27,7 +25,7 @@ logger = logging.getLogger("dinov2")
 XFORMERS_ENABLED = os.environ.get("XFORMERS_DISABLED") is None
 try:
     if XFORMERS_ENABLED:
-        from xformers.ops import fmha, scaled_index_add, index_select_cat
+        from xformers.ops import fmha, index_select_cat, scaled_index_add
 
         XFORMERS_AVAILABLE = True
         # warnings.warn("xFormers is available (Block)")

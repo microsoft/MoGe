@@ -1,17 +1,18 @@
 import os
+
 os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '1'
 import sys
 from pathlib import Path
+
 if (_package_root := str(Path(__file__).absolute().parents[2])) not in sys.path:
     sys.path.insert(0, _package_root)
-import time
-import uuid
-import tempfile
-import itertools
-from typing import *
 import atexit
-from concurrent.futures import ThreadPoolExecutor
+import itertools
 import shutil
+import tempfile
+import time
+from concurrent.futures import ThreadPoolExecutor
+from typing import *
 
 import click
 
@@ -25,24 +26,22 @@ def main(share: bool, pretrained_model_name_or_path: str, model_version: str, us
     print("Import modules...")
     # Lazy import
     import cv2
-    import torch
+    import gradio as gr
     import numpy as np
+    import torch
     import trimesh
     import trimesh.visual
     from PIL import Image
-    import gradio as gr
     try:
-        import spaces   # This is for deployment at huggingface.co/spaces
+        import spaces  # This is for deployment at huggingface.co/spaces
         HUGGINFACE_SPACES_INSTALLED = True
     except ImportError:
         HUGGINFACE_SPACES_INSTALLED = False
 
     import utils3d
-    from moge.utils.io import write_normal
-    from moge.utils.vis import colorize_depth, colorize_normal
+
     from moge.model import import_model_class_by_version
-    from moge.utils.geometry_numpy import depth_occlusion_edge_numpy
-    from moge.utils.tools import timeit
+    from moge.utils.vis import colorize_depth, colorize_normal
 
     print("Load model...")
     if pretrained_model_name_or_path is None:
@@ -180,9 +179,9 @@ def main(share: bool, pretrained_model_name_or_path: str, model_version: str, us
         fov_x, fov_y = np.rad2deg([fov_x, fov_y])
 
         # messages
-        viewer_message = f'**Note:** Inference has been completed. It may take a few seconds to download the 3D model.'
+        viewer_message = '**Note:** Inference has been completed. It may take a few seconds to download the 3D model.'
         if resolution_level != 'Ultra':
-            depth_message = f'**Note:** Want sharper depth map? Try increasing the `maximum image size` and setting the `inference resolution level` to `Ultra` in the settings.'
+            depth_message = '**Note:** Want sharper depth map? Try increasing the `maximum image size` and setting the `inference resolution level` to `Ultra` in the settings.'
         else:
             depth_message = ""
 
@@ -230,7 +229,7 @@ def main(share: bool, pretrained_model_name_or_path: str, model_version: str, us
     print("Create Gradio app...")
     with gr.Blocks(theme=gr.themes.Soft()) as demo:
         gr.Markdown(
-f'''
+'''
 <div align="center">
 <h1> Turn a 2D image into 3D with MoGe <a title="Github" href="https://github.com/microsoft/MoGe" target="_blank" rel="noopener noreferrer" style="display: inline-block;"> <img src="https://img.shields.io/github/stars/microsoft/MoGe?label=GitHub%20%E2%98%85&logo=github&color=C8C" alt="badge-github-stars"> </a> </h1>
 </div>

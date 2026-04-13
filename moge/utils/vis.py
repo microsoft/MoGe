@@ -1,7 +1,7 @@
 from typing import *
 
-import numpy as np
 import matplotlib
+import numpy as np
 
 
 def colorize_depth(depth: np.ndarray, mask: np.ndarray = None, normalize: bool = True, cmap: str = 'Spectral') -> np.ndarray:

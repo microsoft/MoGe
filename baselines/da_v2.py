@@ -1,8 +1,8 @@
 # Reference: https://github.com/DepthAnything/Depth-Anything-V2
 import os
 import sys
-from typing import *
 from pathlib import Path
+from typing import *
 
 import click
 import torch

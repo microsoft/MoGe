@@ -1,12 +1,10 @@
 # Reference: https://github.com/YvanYin/Metric3D
-import os
-import sys
 from typing import *
 
 import click
+import cv2
 import torch
 import torch.nn.functional as F
-import cv2
 
 from moge.test.baseline import MGEBaselineInterface
 

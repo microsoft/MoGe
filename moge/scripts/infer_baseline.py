@@ -1,14 +1,16 @@
 import os
+
 os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '1'
-from pathlib import Path
 import sys
+from pathlib import Path
+
 if (_package_root := str(Path(__file__).absolute().parents[2])) not in sys.path:
     sys.path.insert(0, _package_root)
+import itertools
 import json
+import warnings
 from pathlib import Path
 from typing import *
-import itertools
-import warnings
 
 import click
 
@@ -26,17 +28,17 @@ import click
 @click.pass_context
 def main(ctx: click.Context, baseline_code_path: str, input_path: str, output_path: str, image_size: int, skip: bool, save_maps_, save_ply_: bool, save_glb_: bool, threshold: float):
     # Lazy import
-    import  cv2
+    import cv2
     import numpy as np
-    from tqdm import tqdm
     import torch
     import utils3d
+    from tqdm import tqdm
 
-    from moge.utils.io import save_ply, save_glb
-    from moge.utils.geometry_numpy import intrinsics_to_fov_numpy
-    from moge.utils.vis import colorize_depth, colorize_depth_affine, colorize_disparity
-    from moge.utils.tools import key_average, flatten_nested_dict, timeit, import_file_as_module
     from moge.test.baseline import MGEBaselineInterface
+    from moge.utils.geometry_numpy import intrinsics_to_fov_numpy
+    from moge.utils.io import save_glb, save_ply
+    from moge.utils.tools import import_file_as_module, timeit
+    from moge.utils.vis import colorize_depth, colorize_depth_affine, colorize_disparity
 
     # Load the baseline model
     module = import_file_as_module(baseline_code_path, Path(baseline_code_path).stem)

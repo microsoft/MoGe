@@ -1,15 +1,14 @@
 # Reference https://github.com/DepthAnything/Depth-Anything-V2/metric_depth
 import os
 import sys
-from typing import *
 from pathlib import Path
+from typing import *
 
 import click
 import torch
 import torch.nn.functional as F
 import torchvision.transforms as T
 import torchvision.transforms.functional as TF
-import cv2
 
 from moge.test.baseline import MGEBaselineInterface
 

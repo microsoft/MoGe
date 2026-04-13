@@ -1,50 +1,44 @@
-import os
-from pathlib import Path
 import sys
+from pathlib import Path
+
 if (_package_root := str(Path(__file__).absolute().parents[2])) not in sys.path:
     sys.path.insert(0, _package_root)
-import json
-import time
-import random
-from typing import *
-import itertools
-from contextlib import nullcontext
-from concurrent.futures import ThreadPoolExecutor
 import io
+import json
+import random
+import time
+from concurrent.futures import ThreadPoolExecutor
+from typing import *
 
-import numpy as np
-import cv2
-from PIL import Image
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
-import torch.version
 import accelerate
+import click
+import cv2
+import mlflow
+import numpy as np
+import torch
+import torch.version
+import utils3d
 from accelerate import Accelerator, DistributedDataParallelKwargs
 from accelerate.utils import set_seed
-import utils3d
-import click
-from tqdm import tqdm, trange
-import mlflow
+from tqdm import tqdm
+
 torch.backends.cudnn.benchmark = False      # Varying input size, make sure cudnn benchmark is disabled
 
 from moge.train.dataloader import TrainDataLoaderPipeline
 from moge.train.losses import (
     affine_invariant_global_loss,
-    affine_invariant_local_loss, 
+    affine_invariant_local_loss,
     edge_loss,
-    normal_loss, 
-    mask_l2_loss, 
     mask_bce_loss,
+    mask_l2_loss,
     metric_scale_loss,
+    monitoring,
+    normal_loss,
     normal_map_loss,
-    monitoring, 
 )
-from moge.train.utils import build_optimizer, build_lr_scheduler
-from moge.utils.geometry_torch import intrinsics_to_fov
+from moge.train.utils import build_lr_scheduler, build_optimizer
+from moge.utils.tools import flatten_nested_dict, key_average
 from moge.utils.vis import colorize_depth, colorize_normal
-from moge.utils.tools import key_average, recursive_replace, CallbackOnException, flatten_nested_dict
-from moge.test.metrics import compute_metrics
 
 
 @click.command()
@@ -168,7 +162,7 @@ def main(
                         print(f'Load EMA model checkpoint: {checkpoint_ema_model_path}')
                         checkpoint['ema_model'] = torch.load(checkpoint_ema_model_path, map_location='cpu', weights_only=True)['model']
             else:
-                print(f'No latest checkpoint found. Start from scratch.')
+                print('No latest checkpoint found. Start from scratch.')
                 checkpoint = None
         else:
             # - Load by step number
@@ -340,7 +334,7 @@ def main(
                     if accelerator.sync_gradients:
                         if not enable_mixed_precision and any(torch.isnan(p.grad).any() for p in model.parameters() if p.grad is not None):
                             if accelerator.is_main_process:
-                                pbar.write(f'NaN gradients, skip update')
+                                pbar.write('NaN gradients, skip update')
                             optimizer.zero_grad()
                             continue
                         accelerator.clip_grad_norm_(model.parameters(), 1.0)
