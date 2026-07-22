@@ -1,0 +1,151 @@
+╔══════════════════════════════════════════════════════════════════════════════╗
+║                    MoGrammetry - Windows Quick Start                         ║
+║                   3D Reconstruction with MoGe + COLMAP                       ║
+╚══════════════════════════════════════════════════════════════════════════════╝
+
+🪟 INSTALLATION (5 minutes)
+
+1. Open Command Prompt or PowerShell
+
+2. Clone your repository:
+
+   cd C:\Users\YourName\Documents
+   git clone https://github.com/jenkinsm13/MoGrammetry.git
+   cd MoGrammetry
+   git checkout claude/develop-core-concept-011CUY7FQZkBnDwHyiQ1M4ub
+
+3. Run the setup script:
+
+   setup_windows.bat
+
+   This will:
+   ✓ Check Python installation
+   ✓ Install PyTorch (GPU or CPU)
+   ✓ Install all dependencies
+   ✓ Run tests to verify everything works
+
+4. You're done! Run the demo:
+
+   python demo_mogrammetry.py
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🚀 USAGE
+
+Option 1: Command Line Interface (CLI)
+
+   # Create a config file
+   python scripts\mogrammetry_cli.py create-config my_config.yaml
+
+   # Edit my_config.yaml with your paths
+   notepad my_config.yaml
+
+   # Run reconstruction
+   python scripts\mogrammetry_cli.py run my_config.yaml
+
+Option 2: Web Interface (Easier!)
+
+   # Start web app
+   python scripts\app_mogrammetry.py
+
+   # Open browser to: http://localhost:7860
+   # Upload your COLMAP + images ZIP file
+
+Option 3: Direct command (no config file)
+
+   python scripts\mogrammetry_cli.py run ^
+       --colmap-model "C:\path\to\colmap\sparse\0" ^
+       --image-dir "C:\path\to\images" ^
+       --output "C:\path\to\output"
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📂 WHAT YOU NEED
+
+1. COLMAP reconstruction folder containing:
+   - cameras.txt
+   - images.txt
+   - points3D.txt
+
+2. Your original images (JPG/PNG)
+
+Example structure:
+   my_project\
+   ├── colmap\sparse\0\
+   │   ├── cameras.txt
+   │   ├── images.txt
+   │   └── points3D.txt
+   └── images\
+       ├── image001.jpg
+       └── image002.jpg
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📦 WHAT YOU GET
+
+After reconstruction completes, your output folder will contain:
+
+✓ point_cloud.ply      - Dense 3D point cloud (1-2M points, RGB colored)
+✓ mesh.ply             - 3D mesh (300K-700K faces)
+✓ mesh.glb             - Web-friendly 3D model
+✓ mesh.obj             - For Blender/Unity/Unreal
+✓ reconstruction_report.json - Full statistics
+
+View with:
+- CloudCompare (free): cloudcompare.org
+- MeshLab (free): meshlab.net
+- Blender (free): blender.org
+- Online viewer: gltf-viewer.donmccurdy.com
+
+═══════════════════════════════════════════════════════════════════════════════
+
+⚡ QUICK COMMANDS
+
+Test installation:
+   python tests\test_mogrammetry.py
+
+Run demo:
+   python demo_mogrammetry.py
+
+Check system info:
+   python scripts\mogrammetry_cli.py info
+
+Validate COLMAP data:
+   python scripts\mogrammetry_cli.py validate "C:\path\to\colmap\sparse\0"
+
+Fast reconstruction:
+   python scripts\mogrammetry_cli.py run config.yaml --preset fast
+
+High quality:
+   python scripts\mogrammetry_cli.py run config.yaml --preset quality
+
+═══════════════════════════════════════════════════════════════════════════════
+
+🆘 TROUBLESHOOTING
+
+Problem: "No module named 'torch'"
+Solution: pip install torch torchvision
+
+Problem: "CUDA out of memory"
+Solution: Edit config, set resolution_level: 6 (or use device: cpu)
+
+Problem: Import errors
+Solution: pip install -r requirements.txt
+
+Problem: Can't find COLMAP files
+Solution: Use forward slashes: C:/path/to/file or double backslash: C:\\path
+
+═══════════════════════════════════════════════════════════════════════════════
+
+📚 DOCUMENTATION
+
+WINDOWS_SETUP.md         - Detailed Windows installation guide
+MOGRAMMETRY_README.md    - Full usage documentation
+EXAMPLE_OUTPUT.md        - What to expect from reconstruction
+IMPLEMENTATION_SUMMARY.md - Technical details
+
+═══════════════════════════════════════════════════════════════════════════════
+
+Need help? Check the docs or run: python scripts\mogrammetry_cli.py --help
+
+Happy reconstructing! 🎉

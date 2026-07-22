@@ -1,0 +1,52 @@
+# Fast MoGrammetry configuration
+# Use for quick previews, lower quality
+
+# Paths (set these before running)
+colmap_model_path: null
+image_dir: null
+output_dir: output/fast
+
+# Model
+model_name: Ruicheng/moge-vitl
+
+# Processing settings
+processing:
+  resolution_level: 6     # Lower quality, faster
+  device: cuda
+  batch_size: 1
+  use_gpu: true
+  save_intermediate: false
+
+# Alignment settings
+alignment:
+  method: least_squares   # Fastest method
+  use_reprojection: false
+  min_valid_points: 100
+
+# Fusion settings
+fusion:
+  voxel_size: 0.02        # Aggressive downsampling
+  outlier_removal: none   # Skip for speed
+  merge_strategy: append  # Fastest merge
+
+# Mesh settings
+mesh:
+  method: ball_pivoting   # Faster than Poisson
+  poisson_depth: 7        # Lower detail
+  ball_pivoting_radii:
+    - 0.01
+    - 0.02
+  simplify_mesh: true
+  target_faces: 100000    # Reduce mesh size
+
+# Output settings
+output:
+  save_point_cloud: true
+  save_mesh: true
+  formats:
+    - ply                 # Only PLY for speed
+  export_report: false
+
+# Logging
+log_level: WARNING        # Less logging
+progress_bar: true
