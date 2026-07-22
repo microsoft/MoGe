@@ -1,24 +1,22 @@
-from typing import *
-from numbers import Number
-from functools import partial
-from pathlib import Path
 import warnings
+from numbers import Number
+from pathlib import Path
+from typing import *
 
 import torch
+import torch.amp
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.utils
 import torch.utils.checkpoint
-import torch.amp
 import torch.version
 import utils3d
 from huggingface_hub import hf_hub_download
 
-from ..utils.geometry_torch import normalized_view_plane_uv, recover_focal_shift, angle_diff_vec3
-from .utils import wrap_dinov2_attention_with_sdpa, wrap_module_with_gradient_checkpointing, unwrap_module_with_gradient_checkpointing
-from .modules import DINOv2Encoder, MLP, ConvStack
+from ..utils.geometry_torch import normalized_view_plane_uv, recover_focal_shift
+from .modules import MLP, ConvStack, DINOv2Encoder
 
-    
+
 class MoGeModel(nn.Module):
     encoder: DINOv2Encoder
     neck: ConvStack

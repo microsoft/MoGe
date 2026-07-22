@@ -1,13 +1,8 @@
-from typing import *
 import math
-from collections import namedtuple
+from typing import *
 
-import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import torch.types
-import utils3d
 
 
 def scatter_min(size: int, dim: int, index: torch.LongTensor, src: torch.Tensor) -> torch.return_types.min:

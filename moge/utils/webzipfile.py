@@ -1,13 +1,23 @@
-from typing import *
-import io
-import os
-from zipfile import (
-    ZipInfo, BadZipFile, ZipFile, ZipExtFile,
-    sizeFileHeader, structFileHeader, stringFileHeader, 
-    _FH_SIGNATURE, _FH_FILENAME_LENGTH, _FH_EXTRA_FIELD_LENGTH, _FH_GENERAL_PURPOSE_FLAG_BITS,
-    _MASK_COMPRESSED_PATCH, _MASK_STRONG_ENCRYPTION, _MASK_UTF_FILENAME, _MASK_ENCRYPTED
-)
 import struct
+from typing import *
+from zipfile import (
+    _FH_EXTRA_FIELD_LENGTH,
+    _FH_FILENAME_LENGTH,
+    _FH_GENERAL_PURPOSE_FLAG_BITS,
+    _FH_SIGNATURE,
+    _MASK_COMPRESSED_PATCH,
+    _MASK_ENCRYPTED,
+    _MASK_STRONG_ENCRYPTION,
+    _MASK_UTF_FILENAME,
+    BadZipFile,
+    ZipExtFile,
+    ZipFile,
+    ZipInfo,
+    sizeFileHeader,
+    stringFileHeader,
+    structFileHeader,
+)
+
 from requests import Session
 
 from .webfile import WebFile

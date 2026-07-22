@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 def wrap_module_with_gradient_checkpointing(module: nn.Module):
     from torch.utils.checkpoint import checkpoint
     class _CheckpointingWrapper(module.__class__):

@@ -1,12 +1,10 @@
-import os
 import sys
 from pathlib import Path
+
 if (_package_root := str(Path(__file__).absolute().parents[2])) not in sys.path:
     sys.path.insert(0, _package_root)
 import json
 from typing import *
-import importlib
-import importlib.util
 
 import click
 
@@ -22,19 +20,17 @@ import click
 @click.pass_context
 def main(ctx: click.Context, baseline_code_path: str, config_path: str, oracle_mode: bool, output_path: Union[str, Path], dump_pred: bool, dump_gt: bool):
     # Lazy import
-    import  cv2
+    import cv2
     import numpy as np
-    from tqdm import tqdm
     import torch
-    import torch.nn.functional as F
-    import utils3d
+    from tqdm import tqdm
 
     from moge.test.baseline import MGEBaselineInterface
     from moge.test.dataloader import EvalDataLoaderPipeline
     from moge.test.metrics import compute_metrics
     from moge.utils.geometry_torch import intrinsics_to_fov
+    from moge.utils.tools import import_file_as_module, key_average, timeit
     from moge.utils.vis import colorize_depth, colorize_normal
-    from moge.utils.tools import key_average, flatten_nested_dict, timeit, import_file_as_module
     
     # Load the baseline model
     module = import_file_as_module(baseline_code_path, Path(baseline_code_path).stem)
@@ -76,7 +72,7 @@ def main(ctx: click.Context, baseline_code_path: str, config_path: str, oracle_m
                 metrics_list.append(metrics)
 
                 # Dump results
-                dump_path = Path(output_path.replace(".json", f"_dump"), f'{benchmark_name}', sample['filename'].replace('.zip', ''))
+                dump_path = Path(output_path.replace(".json", "_dump"), f'{benchmark_name}', sample['filename'].replace('.zip', ''))
                 if dump_pred:
                     dump_path.joinpath('pred').mkdir(parents=True, exist_ok=True)
                     cv2.imwrite(str(dump_path / 'pred' / 'image.jpg'), cv2.cvtColor((image.cpu().numpy().transpose(1, 2, 0) * 255).astype(np.uint8), cv2.COLOR_RGB2BGR))

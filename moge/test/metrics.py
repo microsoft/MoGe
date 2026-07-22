@@ -1,25 +1,19 @@
-from typing import *
 from numbers import Number
+from typing import *
 
 import torch
-import torch.nn.functional as F
-import numpy as np
 import utils3d
 
-from ..utils.geometry_torch import (
-    weighted_mean, 
-    intrinsics_to_fov
-)
 from ..utils.alignment import (
-    align_points_scale_z_shift, 
-    align_points_scale_xyz_shift, 
-    align_points_xyz_shift,
-    align_affine_lstsq, 
-    align_depth_scale, 
-    align_depth_affine, 
+    align_affine_lstsq,
+    align_depth_affine,
+    align_depth_scale,
     align_points_scale,
+    align_points_scale_xyz_shift,
+    align_points_xyz_shift,
 )
-from ..utils.tools import key_average, timeit
+from ..utils.geometry_torch import intrinsics_to_fov
+from ..utils.tools import key_average
 
 
 def rel_depth(pred: torch.Tensor, gt: torch.Tensor, eps: float = 1e-6):

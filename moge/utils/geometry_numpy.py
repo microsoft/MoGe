@@ -1,14 +1,10 @@
-from typing import *
 from functools import partial
-import math
+from typing import *
 
 import cv2
 import numpy as np
-from scipy.signal import fftconvolve
-import numpy as np
 import utils3d
-
-from .tools import timeit
+from scipy.signal import fftconvolve
 
 
 def weighted_mean_numpy(x: np.ndarray, w: np.ndarray = None, axis: Union[int, Tuple[int,...]] = None, keepdims: bool = False, eps: float = 1e-7) -> np.ndarray:

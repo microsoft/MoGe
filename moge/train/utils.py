@@ -1,5 +1,5 @@
-from typing import *
 import fnmatch
+from typing import *
 
 import sympy
 import torch

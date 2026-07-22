@@ -1,22 +1,18 @@
-from typing import *
 import math
+from typing import *
 
 import torch
 import torch.nn.functional as F
 import utils3d
 
-from ..utils.geometry_torch import (
-    weighted_mean, 
-    harmonic_mean, 
-    geometric_mean,
-    normalized_view_plane_uv,
-    angle_diff_vec3
-)
 from ..utils.alignment import (
-    align_points_scale_z_shift, 
-    align_points_scale, 
     align_points_scale_xyz_shift,
-    align_points_z_shift,
+    align_points_scale_z_shift,
+)
+from ..utils.geometry_torch import (
+    angle_diff_vec3,
+    harmonic_mean,
+    weighted_mean,
 )
 
 

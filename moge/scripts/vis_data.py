@@ -1,7 +1,9 @@
 import os
+
 os.environ['OPENCV_IO_ENABLE_OPENEXR'] = '1'
 import sys
 from pathlib import Path
+
 if (_package_root := str(Path(__file__).absolute().parents[2])) not in sys.path:
     sys.path.insert(0, _package_root)
 
@@ -34,12 +36,12 @@ def main(
     # Lazy import
     import cv2
     import numpy as np
+    import trimesh
     import utils3d
     from tqdm import tqdm
-    import trimesh
 
-    from moge.utils.io import read_image, read_depth, read_json
-    from moge.utils.vis import colorize_depth, colorize_normal
+    from moge.utils.io import read_depth, read_image, read_json
+    from moge.utils.vis import colorize_depth
 
     filepaths = sorted(p.parent for p in Path(folder_or_path).rglob('meta.json')) 
 

@@ -1,9 +1,8 @@
 from pathlib import Path
 from typing import *
+
 import requests
-
 from tqdm import tqdm
-
 
 __all__ = ["download_file", "download_bytes"]
 
