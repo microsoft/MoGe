@@ -11,14 +11,19 @@ import torch.utils
 import torch.utils.checkpoint
 import torch.amp
 import torch.version
-import utils3d
+try:
+    import utils3d_moge as utils3d
+except ImportError:
+    import utils3d
 from huggingface_hub import hf_hub_download
 
 from ..utils.geometry_torch import normalized_view_plane_uv, recover_focal_shift, angle_diff_vec3
-from .utils import wrap_dinov2_attention_with_sdpa, wrap_module_with_gradient_checkpointing, unwrap_module_with_gradient_checkpointing
-from .modules import DINOv2Encoder, MLP, ConvStack
+from .utils import wrap_module_with_gradient_checkpointing, unwrap_module_with_gradient_checkpointing, wrap_module_with_autocast
+from .modules.dinov2_encoder import DINOv2Encoder
+from .modules.mlp import MLP
+from .modules.conv_stack import ConvStack
 
-    
+
 class MoGeModel(nn.Module):
     encoder: DINOv2Encoder
     neck: ConvStack
@@ -49,10 +54,12 @@ class MoGeModel(nn.Module):
         self.neck = ConvStack(**neck)
         if points_head is not None:
             self.points_head = ConvStack(**points_head) 
+            self.points_head.fp32_output_projection = True  # Use fp32 for the final output projection for better surface reconstruction
         if mask_head is not None:
             self.mask_head = ConvStack(**mask_head)
         if normal_head is not None:
             self.normal_head = ConvStack(**normal_head)
+            self.normal_head.fp32_output_projection = True
         if scale_head is not None:
             self.scale_head = MLP(**scale_head)
 
@@ -102,8 +109,23 @@ class MoGeModel(nn.Module):
         if model_kwargs is not None:
             model_config.update(model_kwargs)
         model = cls(**model_config)
-        model.load_state_dict(checkpoint['model'], strict=False)
-        
+
+        # NOTE: `strict=False` so that a checkpoint may legitimately omit optional heads. That also
+        # means anything the checkpoint does not provide silently keeps its random initialization,
+        # so report it -- e.g. loading a v2 checkpoint into a v3 config leaves the whole refiner
+        # untrained, which is otherwise indistinguishable from a bad prediction.
+        missing_keys, unexpected_keys = model.load_state_dict(checkpoint['model'], strict=False)
+        if missing_keys:
+            warnings.warn(
+                f"{len(missing_keys)} parameter(s) are absent from the checkpoint and keep their random "
+                f"initialization: {missing_keys}"
+            )
+        if unexpected_keys:
+            warnings.warn(
+                f"{len(unexpected_keys)} parameter(s) in the checkpoint have no counterpart in the model "
+                f"and were ignored: {unexpected_keys}"
+            )
+
         return model
     
     def init_weights(self):
@@ -116,8 +138,23 @@ class MoGeModel(nn.Module):
             if hasattr(self, head):
                 getattr(self, head).enable_gradient_checkpointing()
 
-    def enable_pytorch_native_sdpa(self):
-        self.encoder.enable_pytorch_native_sdpa()
+    def enable_mixed_precision(self, dtype: torch.dtype = torch.bfloat16):
+        """Enable fine-grained mixed precision: run the encoder in `dtype`, keep the neck and heads in fp32.
+
+        Calling this repeatedly replaces the previous wrapping rather than stacking it.
+        """
+        for handle in getattr(self, '_autocast_handles', []):
+            handle.remove()
+
+        module_dtype_map = [
+            (self.encoder, dtype),
+            (self.neck, torch.float32),
+            *((getattr(self, head, None), torch.float32) for head in ['points_head', 'normal_head', 'mask_head', 'scale_head']),
+        ]
+        self._autocast_handles = [
+            wrap_module_with_autocast(module, device_type='cuda', dtype=module_dtype)
+            for module, module_dtype in module_dtype_map if module is not None
+        ]
 
     def _remap_points(self, points: torch.Tensor) -> torch.Tensor:
         if self.remap_output == 'linear':

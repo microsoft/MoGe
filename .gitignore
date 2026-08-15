@@ -421,3 +421,5 @@ FodyWeavers.xsd
 /pretrained
 /.gradio
 /tmp
+/tensorboard
+/wandb

@@ -4,7 +4,7 @@
         "width": 872,
         "height": 436,
         "split": ".index.txt",
-        "include_segmentation": true,
+        "segmentation": "segmentation.png",
         "has_sharp_boundary": true
     }
 }

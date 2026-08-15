@@ -12,12 +12,15 @@ import torch.nn.functional as F
 import torch.utils
 import torch.utils.checkpoint
 import torch.version
-import utils3d
+try:
+    import utils3d_moge as utils3d
+except ImportError:
+    import utils3d
 from huggingface_hub import hf_hub_download
 
 
 from ..utils.geometry_torch import normalized_view_plane_uv, recover_focal_shift, gaussian_blur_2d, dilate_with_mask
-from .utils import wrap_dinov2_attention_with_sdpa, wrap_module_with_gradient_checkpointing, unwrap_module_with_gradient_checkpointing
+from .utils import wrap_module_with_gradient_checkpointing, unwrap_module_with_gradient_checkpointing
 from ..utils.tools import timeit
 
 
@@ -179,7 +182,7 @@ class MoGeModel(nn.Module):
         
         # NOTE: We have copied the DINOv2 code in torchhub to this repository.
         # Minimal modifications have been made: removing irrelevant code, unnecessary warnings and fixing importing issues.
-        hub_loader = getattr(importlib.import_module(".dinov2.hub.backbones", __package__), encoder)
+        hub_loader = getattr(importlib.import_module(".modules.dinov2.hub.backbones", __package__), encoder)
         self.backbone = hub_loader(pretrained=False)
         dim_feature = self.backbone.blocks[0].attn.qkv.in_features
         

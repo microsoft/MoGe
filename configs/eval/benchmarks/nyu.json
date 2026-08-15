@@ -3,6 +3,6 @@
         "path": "data/eval/NYUv2",
         "width": 640,
         "height": 480,
-        "split": ".test.txt"
+        "split": ".index.txt"
     }
 }

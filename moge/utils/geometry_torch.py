@@ -7,7 +7,10 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.types
-import utils3d
+try:
+    import utils3d_moge as utils3d
+except ImportError:
+    import utils3d
 
 from .tools import timeit
 from .geometry_numpy import solve_optimal_focal_shift, solve_optimal_shift
@@ -227,8 +230,83 @@ def refine_depth_with_normal(depth: torch.Tensor, normal: torch.Tensor, intrinsi
     log_depth_refine = log_depth.clone()
 
     for _ in range(iterations):
-        log_depth_refine[..., radius:-radius, radius:-radius] = 0.1 * log_depth_refine[..., radius:-radius, radius:-radius] + 0.9 * (damp * log_depth[..., radius:-radius, radius:-radius] - laplacian + (weight * utils3d.pt.sliding_window_2d(log_depth_refine, window_size=kernel_size, stride=1, dim=(-2, -1))).sum(dim=(-2, -1))) / (tot_weight + damp) 
+        log_depth_refine[..., radius:-radius, radius:-radius] = 0.1 * log_depth_refine[..., radius:-radius, radius:-radius] + 0.9 * (damp * log_depth[..., radius:-radius, radius:-radius] - laplacian + (weight * utils3d.pt.sliding_window(log_depth_refine, window_size=kernel_size, stride=1, dim=(-2, -1))).sum(dim=(-2, -1))) / (tot_weight + damp) 
 
     depth_refine = log_depth_refine.exp()
 
     return depth_refine
+
+def mask_aware_nearest_resize(
+    inputs: Union[torch.Tensor, Sequence[torch.Tensor], None],
+    mask: torch.BoolTensor, 
+    size: Tuple[int, int], 
+    return_index: bool = False
+) -> Tuple[Union[torch.Tensor, Sequence[torch.Tensor], None], torch.BoolTensor, Tuple[torch.LongTensor, ...]]:
+    """
+    Resize 2D map by nearest interpolation. Return the nearest neighbor index and mask of the resized map.
+
+    ### Parameters
+    - `inputs`: a single or a list of input 2D map(s) of shape (..., H, W, ...). 
+    - `mask`: input 2D mask of shape (..., H, W)
+    - `size`: target size (target_width, target_height)
+
+    ### Returns
+    - `resized_maps`: resized map(s) of shape (..., target_height, target_width, ...). 
+    - `resized_mask`: mask of the resized map of shape (..., target_height, target_width)
+    - `nearest_idx`: if return_index is True, nearest neighbor index of the resized map of shape (..., target_height, target_width) for each dimension, .
+    """
+    height, width = mask.shape[-2:]
+    target_width, target_height = size
+    device = mask.device
+    filter_h_f, filter_w_f = max(1, height / target_height), max(1, width / target_width)
+    filter_h_i, filter_w_i = math.ceil(filter_h_f), math.ceil(filter_w_f)
+    filter_size = filter_h_i * filter_w_i
+    padding_h, padding_w = filter_h_i // 2 + 1, filter_w_i // 2 + 1
+
+    # Window the original mask and uv
+    uv = utils3d.pt.pixel_coord_map((height, width), dtype=torch.float32, device=device)
+    indices = torch.arange(height * width, dtype=torch.long, device=device).reshape(height, width)
+    padded_uv = torch.full((height + 2 * padding_h, width + 2 * padding_w, 2), 0, dtype=torch.float32, device=device)
+    padded_uv[padding_h:padding_h + height, padding_w:padding_w + width] = uv
+    padded_mask = torch.full((*mask.shape[:-2], height + 2 * padding_h, width + 2 * padding_w), False, dtype=torch.bool, device=device)
+    padded_mask[..., padding_h:padding_h + height, padding_w:padding_w + width] = mask
+    padded_indices = torch.full((height + 2 * padding_h, width + 2 * padding_w), 0, dtype=torch.long, device=device)
+    padded_indices[padding_h:padding_h + height, padding_w:padding_w + width] = indices
+    windowed_uv = utils3d.pt.sliding_window(padded_uv, (filter_h_i, filter_w_i), 1, dim=(0, 1))
+    windowed_mask = utils3d.pt.sliding_window(padded_mask, (filter_h_i, filter_w_i), 1, dim=(-2, -1))
+    windowed_indices = utils3d.pt.sliding_window(padded_indices, (filter_h_i, filter_w_i), 1, dim=(0, 1))
+
+    # Gather the target pixels's local window
+    target_uv = utils3d.pt.uv_map((target_height, target_width), dtype=torch.float32, device=device) * torch.tensor([width, height], dtype=torch.float32, device=device)
+    target_lefttop = target_uv - torch.tensor((filter_w_f / 2, filter_h_f / 2), dtype=torch.float32, device=device)
+    target_window = torch.round(target_lefttop).long() + torch.tensor((padding_w, padding_h), dtype=torch.long, device=device)
+
+    target_window_uv = windowed_uv[target_window[..., 1], target_window[..., 0], :, :, :].reshape(target_height, target_width, 2, filter_size)                          # (target_height, tgt_width, 2, filter_size)
+    target_window_mask = windowed_mask[..., target_window[..., 1], target_window[..., 0], :, :].reshape(*mask.shape[:-2], target_height, target_width, filter_size)     # (..., target_height, tgt_width, filter_size)
+    target_window_indices = windowed_indices[target_window[..., 1], target_window[..., 0], :, :].reshape(target_height, target_width, filter_size)                      # (target_height, tgt_width, filter_size)
+    target_window_indices = target_window_indices.expand_as(target_window_mask)
+
+    # Compute nearest neighbor in the local window for each pixel 
+    dist = torch.where(target_window_mask, torch.norm(target_window_uv - target_uv[..., None], dim=-2), torch.inf)  # (..., target_height, tgt_width, filter_size)
+    nearest = torch.argmin(dist, dim=-1, keepdim=True)                                                              # (..., target_height, tgt_width, 1)
+    nearest_idx = torch.gather(target_window_indices, index=nearest, dim=-1).squeeze(-1)                            # (..., target_height, tgt_width)
+    target_mask = torch.any(target_window_mask, dim=-1)
+    nearest_i, nearest_j = nearest_idx // width, nearest_idx % width
+    batch_indices = [torch.arange(n, device=device).reshape([1] * i + [n] + [1] * (mask.dim() - i - 1)) for i, n in enumerate(mask.shape[:-2])]
+    
+    index = (*batch_indices, nearest_i, nearest_j)
+    
+    if inputs is None:
+        outputs = None
+    elif isinstance(inputs, torch.Tensor):
+        outputs = inputs[index]
+    elif isinstance(inputs, Sequence):
+        outputs = tuple(x[index] for x in inputs)
+    else:
+        raise ValueError(f'Invalid input type: {type(inputs)}')
+    
+    if return_index:
+        return outputs, target_mask, index
+    else:
+        return outputs, target_mask
+

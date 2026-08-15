@@ -7,7 +7,10 @@ import numpy as np
 import torch
 from PIL import Image
 import cv2
-import utils3d
+try:
+    import utils3d_moge as utils3d
+except ImportError:
+    import utils3d
 import pipeline
 
 from ..utils.geometry_numpy import focal_to_fov_numpy, norm3d
@@ -16,25 +19,27 @@ from ..utils.tools import timeit
 
 
 class EvalDataLoaderPipeline:
-
     def __init__(
-        self, 
-        path: str, 
-        width: int, 
-        height: int, 
-        split: int = '.index.txt', 
-        drop_max_depth: float = 1000., 
-        num_load_workers: int = 4, 
-        num_process_workers: int = 8, 
-        include_segmentation: bool = False, 
-        include_normal: bool = False,
-        depth_to_normal: bool = False,
+        self,
+        path: str,
+        width: int,
+        height: int,
+        split: str = '.index.txt',
+        depth: str = 'depth.png',
+        drop_max_depth: float = 1000.,
+        segmentation: str = None,
+        normal: str = None,
+        local_mask: str = None,
+        local_segmentation: str = None,
         max_segments: int = 100,
         min_seg_area: int = 1000,
         depth_unit: str = None,
         has_sharp_boundary = False,
         subset: int = None,
     ):
+        num_load_workers = int(os.environ.get('MOGE_NUM_LOAD_WORKERS', 4))
+        num_process_workers = int(os.environ.get('MOGE_NUM_PROCESS_WORKERS', 8))
+    
         filenames = Path(path).joinpath(split).read_text(encoding='utf-8').splitlines()
         filenames = filenames[::subset]
         self.width = width
@@ -42,11 +47,13 @@ class EvalDataLoaderPipeline:
         self.drop_max_depth = drop_max_depth
         self.path = Path(path)
         self.filenames = filenames
-        self.include_segmentation = include_segmentation
-        self.include_normal = include_normal
+        self.depth_file = depth
+        self.segmentation_file = segmentation
+        self.normal_file = normal
+        self.local_mask_file = local_mask
+        self.local_segmentation_file = local_segmentation
         self.max_segments = max_segments
         self.min_seg_area = min_seg_area
-        self.depth_to_normal = depth_to_normal
         self.depth_unit = depth_unit
         self.has_sharp_boundary = has_sharp_boundary
 
@@ -79,22 +86,56 @@ class EvalDataLoaderPipeline:
         }
         instance['image'] = read_image(Path(path, 'image.jpg'))
 
-        depth = read_depth(Path(path, 'depth.png'))  # ignore depth unit from depth file, use config instead
+        depth = read_depth(Path(path, self.depth_file))  # ignore depth unit from depth file, use config instead
         instance.update({
             'depth': np.nan_to_num(depth, nan=1, posinf=1, neginf=1),
             'depth_mask': np.isfinite(depth),
             'depth_mask_inf': np.isinf(depth),
         })
 
-        if self.include_segmentation:
-            segmentation_mask, segmentation_labels = read_segmentation(Path(path,'segmentation.png'))
+        if self.segmentation_file is not None:
+            segmentation_mask, segmentation_labels = read_segmentation(Path(path, self.segmentation_file))
+            if segmentation_labels is None:
+                # SAM-style id maps (sam_segmentation*.png) carry no PNG `labels`
+                # metadata. Synthesize one entry per non-zero id so the downstream
+                # label filtering in _process_instance still works.
+                segmentation_labels = {f'{int(i):05d}': int(i) for i in np.unique(segmentation_mask) if i > 0}
             instance.update({
                 'segmentation_mask': segmentation_mask,
                 'segmentation_labels': segmentation_labels,
             })
-        
-        meta = read_meta(Path(path, 'meta.json'))
+
+        meta = read_json(Path(path, 'meta.json'))
         instance['intrinsics'] = np.array(meta['intrinsics'], dtype=np.float32)
+
+        if self.normal_file is not None:
+            normal = read_normal(Path(path, self.normal_file))
+            # `read_normal` marks invalid pixels with NaN, so derive the mask
+            # before scrubbing them.
+            normal_mask = np.isfinite(normal).all(axis=-1)
+            normal = np.nan_to_num(normal, nan=0, posinf=0, neginf=0)
+            instance.update({
+                'normal': normal,
+                'normal_mask': normal_mask,
+            })
+
+        if self.local_mask_file is not None:
+            local_mask_path = Path(path, self.local_mask_file)
+            if local_mask_path.exists():
+                local_mask = cv2.imread(str(local_mask_path), cv2.IMREAD_GRAYSCALE)
+                instance['local_mask'] = local_mask > 0
+
+                if self.local_segmentation_file is not None:
+                    hf_seg_path = Path(path, self.local_segmentation_file)
+                    if hf_seg_path.exists():
+                        hf_seg = cv2.imread(str(hf_seg_path), cv2.IMREAD_UNCHANGED)
+                        if hf_seg.shape[:2] != instance['local_mask'].shape:
+                            hf_seg = cv2.resize(
+                                hf_seg,
+                                (instance['local_mask'].shape[1], instance['local_mask'].shape[0]),
+                                interpolation=cv2.INTER_NEAREST,
+                            )
+                        instance['local_segmentation'] = hf_seg.astype(np.int32)
 
         return instance
 
@@ -104,6 +145,7 @@ class EvalDataLoaderPipeline:
         
         image, depth, depth_mask, intrinsics = instance['image'], instance['depth'], instance['depth_mask'], instance['intrinsics']
         segmentation_mask, segmentation_labels = instance.get('segmentation_mask', None), instance.get('segmentation_labels', None)
+        normal, normal_mask = instance.get('normal', None), instance.get('normal_mask', None)
 
         raw_height, raw_width = image.shape[:2]
         raw_horizontal, raw_vertical = abs(1.0 / intrinsics[0, 0]), abs(1.0 / intrinsics[1, 1])
@@ -147,6 +189,10 @@ class EvalDataLoaderPipeline:
         depth, depth_mask = utils3d.np.masked_nearest_resize(depth, mask=depth_mask, size=(rescaled_h, rescaled_w))
         distance = norm3d(utils3d.np.depth_map_to_point_map(depth, intrinsics=intrinsics))
         segmentation_mask = cv2.resize(segmentation_mask, (rescaled_w, rescaled_h), interpolation=cv2.INTER_NEAREST) if segmentation_mask is not None else None
+        if normal is not None:
+            # NOTE: `utils3d.np.masked_nearest_resize` takes size as (H, W) -- the
+            # opposite of cv2's (W, H) and of `mask_aware_nearest_resize_numpy`.
+            normal, normal_mask = utils3d.np.masked_nearest_resize(normal, mask=normal_mask, size=(rescaled_h, rescaled_w))
 
         # 4.2 calculate homography warping
         transform = intrinsics @ np.linalg.inv(R) @ np.linalg.inv(tgt_intrinsics)
@@ -162,6 +208,25 @@ class EvalDataLoaderPipeline:
         tgt_depth = tgt_distance / (tgt_ray_length + 1e-12)
         tgt_depth_mask = cv2.remap(depth_mask.astype(np.uint8), pixel_remap[:, :, 0], pixel_remap[:, :, 1], cv2.INTER_NEAREST) > 0
         tgt_segmentation_mask = cv2.remap(segmentation_mask, pixel_remap[:, :, 0], pixel_remap[:, :, 1], cv2.INTER_NEAREST) if segmentation_mask is not None else None
+        tgt_normal = cv2.remap(normal, pixel_remap[:, :, 0], pixel_remap[:, :, 1], cv2.INTER_LINEAR) @ R.T if normal is not None else None
+        tgt_normal_mask = cv2.remap(normal_mask.astype(np.uint8), pixel_remap[:, :, 0], pixel_remap[:, :, 1], cv2.INTER_NEAREST) > 0 if normal_mask is not None else None
+
+        # NOTE: cv2.resize / cv2.remap take size as (W, H), unlike the
+        # `masked_nearest_resize` call above.
+        local_mask = instance.get('local_mask', None)
+        if local_mask is not None:
+            local_mask = cv2.resize(local_mask.astype(np.uint8), (rescaled_w, rescaled_h), interpolation=cv2.INTER_NEAREST)
+            tgt_local_mask = cv2.remap(local_mask, pixel_remap[:, :, 0], pixel_remap[:, :, 1], cv2.INTER_NEAREST) > 0
+        else:
+            tgt_local_mask = None
+
+        local_segmentation = instance.get('local_segmentation', None)
+        if local_segmentation is not None:
+            # int32 round-trips through resize/remap under INTER_NEAREST.
+            local_segmentation = cv2.resize(local_segmentation, (rescaled_w, rescaled_h), interpolation=cv2.INTER_NEAREST)
+            tgt_local_segmentation = cv2.remap(local_segmentation, pixel_remap[:, :, 0], pixel_remap[:, :, 1], cv2.INTER_NEAREST)
+        else:
+            tgt_local_segmentation = None
 
         # drop depth greater than drop_max_depth
         max_depth = np.nanquantile(np.where(tgt_depth_mask, tgt_depth, np.nan), 0.01) * self.drop_max_depth
@@ -180,7 +245,7 @@ class EvalDataLoaderPipeline:
         tgt_pts = utils3d.np.unproject_cv(uv_tgt, tgt_depth, intrinsics=tgt_intrinsics)
 
         # Process segmentation labels
-        if self.include_segmentation and segmentation_mask is not None:
+        if segmentation_mask is not None:
             for k in ['undefined', 'unannotated', 'background', 'sky']:
                 if k in segmentation_labels:
                     del segmentation_labels[k]
@@ -194,8 +259,12 @@ class EvalDataLoaderPipeline:
             'depth_mask': torch.from_numpy(tgt_depth_mask).bool(),
             'intrinsics': torch.from_numpy(tgt_intrinsics).float(),
             'points': torch.from_numpy(tgt_pts).float(),
+            'normal': torch.from_numpy(tgt_normal).float() if tgt_normal is not None else None,
+            'normal_mask': torch.from_numpy(tgt_normal_mask).bool() if tgt_normal_mask is not None else None,
             'segmentation_mask': torch.from_numpy(tgt_segmentation_mask).long() if tgt_segmentation_mask is not None else None,
             'segmentation_labels': segmentation_labels,
+            'local_mask': torch.from_numpy(tgt_local_mask).bool() if tgt_local_mask is not None else None,
+            'local_segmentation': torch.from_numpy(tgt_local_segmentation).long() if tgt_local_segmentation is not None else None,
             'is_metric': self.depth_unit is not None,
             'has_sharp_boundary': self.has_sharp_boundary,
         })

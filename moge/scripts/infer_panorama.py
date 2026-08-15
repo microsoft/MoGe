@@ -54,7 +54,10 @@ def main(
     from scipy.ndimage import convolve
     from scipy.sparse.linalg import lsmr
 
-    import utils3d
+    try:
+        import utils3d_moge as utils3d
+    except ImportError:
+        import utils3d
     from moge.model.v1 import MoGeModel
     from moge.utils.io import save_glb, save_ply
     from moge.utils.vis import colorize_depth

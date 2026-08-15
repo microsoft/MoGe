@@ -127,15 +127,6 @@ def write_jsonl(data: List[dict], file):
             f.write(json.dumps(item) + '\n')
 
 
-def to_hierachical_dataframe(data: List[Dict[Tuple[str, ...], Any]]):
-    import pandas as pd
-    data = [flatten_nested_dict(d) for d in data]
-    df = pd.DataFrame(data)
-    df = df.sort_index(axis=1)
-    df.columns = pd.MultiIndex.from_tuples(df.columns)  
-    return df
-
-
 def recursive_replace(d: Union[List, Dict, str], mapping: Dict[str, str]):
     if isinstance(d, str):
         for old, new in mapping.items():
@@ -152,12 +143,13 @@ def recursive_replace(d: Union[List, Dict, str], mapping: Dict[str, str]):
 class timeit:
     _history: Dict[str, List['timeit']] = {}
 
-    def __init__(self, name: str = None, verbose: bool = True, average: bool = False):
+    def __init__(self, name: str = None, verbose: bool = True, average: bool = False, sync: Optional[Callable] = None):
         self.name = name
         self.verbose = verbose
         self.start = None
         self.end = None
         self.average = average
+        self.sync = sync
         if average and name not in timeit._history:
             timeit._history[name] = []
 
@@ -177,6 +169,8 @@ class timeit:
             return wrapper
         
     def __enter__(self):
+        if self.sync is not None:
+            self.sync()
         self.start = time.time()
         return self
 
@@ -196,6 +190,8 @@ class timeit:
         return timeit._history.get(self.name, [])
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.sync is not None:
+            self.sync()
         self.end = time.time()
         if self.average:
             timeit._history[self.name].append(self)

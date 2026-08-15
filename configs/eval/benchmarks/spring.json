@@ -3,7 +3,9 @@
         "path": "data/eval/Spring",
         "width": 1920,
         "height": 1080,
-        "split": ".test.txt",
-        "has_sharp_boundary": true
+        "split": ".index.txt",
+        "has_sharp_boundary": true,
+        "local_mask": "local_mask.png",
+        "local_segmentation": "sam_segmentation.png"
     }
 }

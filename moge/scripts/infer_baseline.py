@@ -30,7 +30,10 @@ def main(ctx: click.Context, baseline_code_path: str, input_path: str, output_pa
     import numpy as np
     from tqdm import tqdm
     import torch
-    import utils3d
+    try:
+        import utils3d_moge as utils3d
+    except ImportError:
+        import utils3d
 
     from moge.utils.io import save_ply, save_glb
     from moge.utils.geometry_numpy import intrinsics_to_fov_numpy

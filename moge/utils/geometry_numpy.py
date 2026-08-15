@@ -6,7 +6,10 @@ import cv2
 import numpy as np
 from scipy.signal import fftconvolve
 import numpy as np
-import utils3d
+try:
+    import utils3d_moge as utils3d
+except ImportError:
+    import utils3d
 
 from .tools import timeit
 
@@ -259,3 +262,79 @@ def depth_of_field(
         output[mask] = precomputed[r][mask]
         
     return output
+
+
+def mask_aware_nearest_resize_numpy(
+    inputs: Union[np.ndarray, Tuple[np.ndarray, ...], None],
+    mask: np.ndarray, 
+    size: Tuple[int, int], 
+    return_index: bool = False
+) -> Tuple[Union[np.ndarray, Tuple[np.ndarray, ...], None], np.ndarray, Tuple[np.ndarray, ...]]:
+    """
+    Resize 2D map by nearest interpolation. Return the nearest neighbor index and mask of the resized map.
+
+    ### Parameters
+    - `inputs`: a single or a list of input 2D map(s) of shape (..., H, W, ...). 
+    - `mask`: input 2D mask of shape (..., H, W)
+    - `size`: target size (width, height)
+
+    ### Returns
+    - `resized_maps`: resized map(s) of shape (..., target_height, target_width, ...). 
+    - `resized_mask`: mask of the resized map of shape (..., target_height, target_width)
+    - `nearest_idx`: if return_index is True, nearest neighbor index of the resized map of shape (..., target_height, target_width) for each dimension.
+    """
+    height, width = mask.shape[-2:]
+    target_width, target_height = size
+    filter_h_f, filter_w_f = max(1, height / target_height), max(1, width / target_width)
+    filter_h_i, filter_w_i = math.ceil(filter_h_f), math.ceil(filter_w_f)
+    filter_size = filter_h_i * filter_w_i
+    padding_h, padding_w = filter_h_i // 2 + 1, filter_w_i // 2 + 1
+    
+    # Window the original mask and uv
+    uv = utils3d.np.pixel_coord_map((height, width), dtype=np.float32)
+    indices = np.arange(height * width, dtype=np.int32).reshape(height, width)
+    padded_uv = np.full((height + 2 * padding_h, width + 2 * padding_w, 2), 0, dtype=np.float32)
+    padded_uv[padding_h:padding_h + height, padding_w:padding_w + width] = uv
+    padded_mask = np.full((*mask.shape[:-2], height + 2 * padding_h, width + 2 * padding_w), False, dtype=bool)
+    padded_mask[..., padding_h:padding_h + height, padding_w:padding_w + width] = mask
+    padded_indices = np.full((height + 2 * padding_h, width + 2 * padding_w), 0, dtype=np.int32)
+    padded_indices[padding_h:padding_h + height, padding_w:padding_w + width] = indices
+    windowed_uv = utils3d.np.sliding_window(padded_uv, (filter_h_i, filter_w_i), 1, axis=(0, 1))
+    windowed_mask = utils3d.np.sliding_window(padded_mask, (filter_h_i, filter_w_i), 1, axis=(-2, -1))
+    windowed_indices = utils3d.np.sliding_window(padded_indices, (filter_h_i, filter_w_i), 1, axis=(0, 1))
+
+    # Gather the target pixels's local window
+    target_centers = utils3d.np.uv_map((target_height, target_width), dtype=np.float32) * np.array([width, height], dtype=np.float32)
+    target_lefttop = target_centers - np.array((filter_w_f / 2, filter_h_f / 2), dtype=np.float32)
+    target_window = np.round(target_lefttop).astype(np.int32) + np.array((padding_w, padding_h), dtype=np.int32)
+
+    target_window_centers = windowed_uv[target_window[..., 1], target_window[..., 0], :, :, :].reshape(target_height, target_width, 2, filter_size)                          # (target_height, tgt_width, 2, filter_size)
+    target_window_mask = windowed_mask[..., target_window[..., 1], target_window[..., 0], :, :].reshape(*mask.shape[:-2], target_height, target_width, filter_size)     # (..., target_height, tgt_width, filter_size)
+    target_window_indices = windowed_indices[target_window[..., 1], target_window[..., 0], :, :].reshape(*([-1] * (mask.ndim - 2)), target_height, target_width, filter_size)                      # (target_height, tgt_width, filter_size)
+
+    # Compute nearest neighbor in the local window for each pixel 
+    dist = np.square(target_window_centers - target_centers[..., None])
+    dist = dist[..., 0, :] + dist[..., 1, :]
+    dist = np.where(target_window_mask, dist, np.inf)                                                   # (..., target_height, tgt_width, filter_size)
+    nearest_in_window = np.argmin(dist, axis=-1, keepdims=True)                                         # (..., target_height, tgt_width, 1)
+    nearest_idx = np.take_along_axis(target_window_indices, nearest_in_window, axis=-1).squeeze(-1)     # (..., target_height, tgt_width)
+    nearest_i, nearest_j = nearest_idx // width, nearest_idx % width
+    target_mask = np.any(target_window_mask, axis=-1)
+    batch_indices = [np.arange(n).reshape([1] * i + [n] + [1] * (mask.ndim - i - 1)) for i, n in enumerate(mask.shape[:-2])]
+
+    index = (*batch_indices, nearest_i, nearest_j)
+    
+    if inputs is None:
+        outputs = None
+    elif isinstance(inputs, np.ndarray):
+        outputs = inputs[index]
+    elif isinstance(inputs, Sequence):
+        outputs = tuple(x[index] for x in inputs)
+    else:
+        raise ValueError(f'Invalid input type: {type(inputs)}')
+    
+    if return_index:
+        return outputs, target_mask, index
+    else:
+        return outputs, target_mask
+

@@ -1,18 +1,12 @@
 from typing import *
-from numbers import Number
-import importlib
 import itertools
+import contextlib
 import functools
-import sys
 
 import torch
-from torch import Tensor
 import torch.nn as nn
-import torch.nn.functional as F
 
-from .dinov2.models.vision_transformer import DinoVisionTransformer
-from .utils import wrap_dinov2_attention_with_sdpa, wrap_module_with_gradient_checkpointing, unwrap_module_with_gradient_checkpointing
-from ..utils.geometry_torch import normalized_view_plane_uv
+from ..utils import wrap_module_with_gradient_checkpointing, unwrap_module_with_gradient_checkpointing
 
 
 class ResidualConvBlock(nn.Module):  
@@ -67,75 +61,6 @@ class ResidualConvBlock(nn.Module):
         x = x + skip
         return x  
 
-
-class DINOv2Encoder(nn.Module):
-    "Wrapped DINOv2 encoder supporting gradient checkpointing. Input is RGB image in range [0, 1]."
-    backbone: DinoVisionTransformer
-    image_mean: torch.Tensor
-    image_std: torch.Tensor
-    dim_features: int
-
-    def __init__(self, backbone: str, intermediate_layers: Union[int, List[int]], dim_out: int, **deprecated_kwargs):
-        super(DINOv2Encoder, self).__init__()
-
-        self.intermediate_layers = intermediate_layers
-
-        # Load the backbone
-        self.hub_loader = getattr(importlib.import_module(".dinov2.hub.backbones", __package__), backbone)
-        self.backbone_name = backbone
-        self.backbone = self.hub_loader(pretrained=False)
-
-        self.dim_features = self.backbone.blocks[0].attn.qkv.in_features
-        self.num_features = intermediate_layers if isinstance(intermediate_layers, int) else len(intermediate_layers)
-
-        self.output_projections = nn.ModuleList([
-            nn.Conv2d(in_channels=self.dim_features, out_channels=dim_out, kernel_size=1, stride=1, padding=0,) 
-                for _ in range(self.num_features)
-        ])
-
-        self.register_buffer("image_mean", torch.tensor([0.485, 0.456, 0.406]).view(1, 3, 1, 1))
-        self.register_buffer("image_std", torch.tensor([0.229, 0.224, 0.225]).view(1, 3, 1, 1))
-
-    @property
-    def onnx_compatible_mode(self):
-        return getattr(self, "_onnx_compatible_mode", False)
-
-    @onnx_compatible_mode.setter
-    def onnx_compatible_mode(self, value: bool):
-        self._onnx_compatible_mode = value
-        self.backbone.onnx_compatible_mode = value
-
-    def init_weights(self):
-        pretrained_backbone_state_dict = self.hub_loader(pretrained=True).state_dict()
-        self.backbone.load_state_dict(pretrained_backbone_state_dict)
-
-    def enable_gradient_checkpointing(self):
-        for i in range(len(self.backbone.blocks)):
-            wrap_module_with_gradient_checkpointing(self.backbone.blocks[i])
-
-    def enable_pytorch_native_sdpa(self):
-        for i in range(len(self.backbone.blocks)):
-            wrap_dinov2_attention_with_sdpa(self.backbone.blocks[i].attn)
-
-    def forward(self, image: torch.Tensor, token_rows: Union[int, torch.LongTensor], token_cols: Union[int, torch.LongTensor], return_class_token: bool = False) -> Tuple[torch.Tensor, torch.Tensor]:
-        image_14 = F.interpolate(image, (token_rows * 14, token_cols * 14), mode="bilinear", align_corners=False, antialias=not self.onnx_compatible_mode)
-        image_14 = (image_14 - self.image_mean) / self.image_std
-
-        # Get intermediate layers from the backbone
-        features = self.backbone.get_intermediate_layers(image_14, n=self.intermediate_layers, return_class_token=True)
-    
-        # Project features to the desired dimensionality
-        x = torch.stack([
-            proj(feat.permute(0, 2, 1).unflatten(2, (token_rows, token_cols)).contiguous())
-                for proj, (feat, clstoken) in zip(self.output_projections, features)
-        ], dim=1).sum(dim=1)                    
-
-        if return_class_token:
-            return x, features[-1][1]
-        else:
-            return x
-
-
 class Resampler(nn.Sequential):
     def __init__(self, 
         in_channels: int, 
@@ -181,16 +106,6 @@ class Resampler(nn.Sequential):
         else:
             raise ValueError(f'Unsupported resampler type: {type_}')
 
-class MLP(nn.Sequential):
-    def __init__(self, dims: Sequence[int]):
-        nn.Sequential.__init__(self,
-            *itertools.chain(*[
-                (nn.Linear(dim_in, dim_out), nn.ReLU(inplace=True))
-                    for dim_in, dim_out in zip(dims[:-2], dims[1:-1])
-            ]),
-            nn.Linear(dims[-2], dims[-1]),
-        )
-
 
 class ConvStack(nn.Module):
     def __init__(self, 
@@ -203,6 +118,7 @@ class ConvStack(nn.Module):
         res_block_in_norm: Literal['layer_norm', 'group_norm' , 'instance_norm', 'none'] = 'layer_norm',
         res_block_hidden_norm: Literal['layer_norm', 'group_norm' , 'instance_norm', 'none'] = 'group_norm',
         activation: Literal['relu', 'leaky_relu', 'silu', 'elu'] = 'relu',
+        fp32_output_projection: bool = False
     ):
         super().__init__()
         self.input_blocks = nn.ModuleList([
@@ -231,6 +147,7 @@ class ConvStack(nn.Module):
             nn.Conv2d(dim_res_block_, dim_out_, kernel_size=1, stride=1, padding=0) if dim_out_ is not None else nn.Identity() 
                 for dim_out_, dim_res_block_ in zip(dim_out if isinstance(dim_out, Sequence) else itertools.repeat(dim_out), dim_res_blocks)
         ])
+        self.fp32_output_projection = fp32_output_projection
 
     def enable_gradient_checkpointing(self):
         for i in range(len(self.resamplers)):
@@ -248,7 +165,13 @@ class ConvStack(nn.Module):
             elif feature is not None:
                 x = x + feature
             x = self.res_blocks[i](x)
-            out_features.append(self.output_blocks[i](x))
+            # Optionally force the 1x1 output projection to run in fp32
+            with (
+                torch.autocast(device_type=x.device.type, dtype=torch.float32, enabled=True)
+                if self.fp32_output_projection
+                else contextlib.nullcontext()
+            ):
+                out_features.append(self.output_blocks[i](x))
             if i < len(self.res_blocks) - 1:
                 x = self.resamplers[i](x)
         return out_features

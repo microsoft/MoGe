@@ -14,7 +14,10 @@ from scipy.sparse import csr_array, hstack, vstack
 from scipy.ndimage import convolve
 from scipy.sparse.linalg import lsmr
 
-import utils3d
+try:
+    import utils3d_moge as utils3d
+except ImportError:
+    import utils3d
 
 
 def get_panorama_cameras():

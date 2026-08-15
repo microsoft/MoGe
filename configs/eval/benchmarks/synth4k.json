@@ -1,0 +1,11 @@
+{
+    "Synth4K": {
+        "path": "data/eval/Synth4k",
+        "width": 3840,
+        "height": 2160,
+        "split": ".index.txt",
+        "depth_unit": 1.0,
+        "local_mask": "local_mask.png",
+        "local_segmentation": "sam_segmentation.png"
+    }
+}

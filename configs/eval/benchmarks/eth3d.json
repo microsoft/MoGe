@@ -4,7 +4,7 @@
         "width": 2048,
         "height": 1365,
         "split": ".index.txt",
-        "include_segmentation": true,
+        "segmentation": "segmentation.png",
         "depth_unit": 1
     }
 }

@@ -13,7 +13,7 @@ def colorize_depth(depth: np.ndarray, mask: np.ndarray = None, normalize: bool =
     if normalize:
         min_disp, max_disp = np.nanquantile(disp, 0.001), np.nanquantile(disp, 0.99)
         disp = (disp - min_disp) / (max_disp - min_disp)
-    colored = np.nan_to_num(matplotlib.colormaps[cmap](1.0 - disp)[..., :3], 0)
+    colored = np.nan_to_num(matplotlib.colormaps[cmap](1.0 - disp)[..., :3], nan=0.0)
     colored = np.ascontiguousarray((colored.clip(0, 1) * 255).astype(np.uint8))
     return colored
 
@@ -24,7 +24,7 @@ def colorize_depth_affine(depth: np.ndarray, mask: np.ndarray = None, cmap: str 
 
     min_depth, max_depth = np.nanquantile(depth, 0.001), np.nanquantile(depth, 0.999)
     depth = (depth - min_depth) / (max_depth - min_depth)
-    colored = np.nan_to_num(matplotlib.colormaps[cmap](depth)[..., :3], 0)
+    colored = np.nan_to_num(matplotlib.colormaps[cmap](depth)[..., :3], nan=0.0)
     colored = np.ascontiguousarray((colored.clip(0, 1) * 255).astype(np.uint8))
     return colored
 
@@ -36,7 +36,7 @@ def colorize_disparity(disparity: np.ndarray, mask: np.ndarray = None, normalize
     if normalize:
         min_disp, max_disp = np.nanquantile(disparity, 0.001), np.nanquantile(disparity, 0.999)
         disparity = (disparity - min_disp) / (max_disp - min_disp)
-    colored = np.nan_to_num(matplotlib.colormaps[cmap](1.0 - disparity)[..., :3], 0)
+    colored = np.nan_to_num(matplotlib.colormaps[cmap](1.0 - disparity)[..., :3], nan=0.0)
     colored = np.ascontiguousarray((colored.clip(0, 1) * 255).astype(np.uint8))
     return colored
 

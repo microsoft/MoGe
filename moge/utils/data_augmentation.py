@@ -12,7 +12,10 @@ import cv2
 from PIL import Image
 import torch
 import torchvision.transforms.v2.functional as TF
-import utils3d
+try:
+    import utils3d_moge as utils3d
+except ImportError:
+    import utils3d
 from scipy.signal import fftconvolve
 
 from ..utils.geometry_numpy import harmonic_mean_numpy, norm3d, depth_occlusion_edge_numpy

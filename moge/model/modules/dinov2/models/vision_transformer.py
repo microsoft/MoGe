@@ -17,7 +17,7 @@ import torch.nn as nn
 import torch.utils.checkpoint
 from torch.nn.init import trunc_normal_
 
-from ..layers import Mlp, PatchEmbed, SwiGLUFFNFused, MemEffAttention, NestedTensorBlock as Block
+from ..layers import Mlp, PatchEmbed, SwiGLUFFNFused, Attention, Block
 
 
 logger = logging.getLogger("dinov2")
@@ -59,7 +59,6 @@ class DinoVisionTransformer(nn.Module):
         init_values=None,  # for layerscale: None or 0 => no layerscale
         embed_layer=PatchEmbed,
         act_layer=nn.GELU,
-        block_fn=Block,
         ffn_layer="mlp",
         block_chunks=1,
         num_register_tokens=0,
@@ -135,7 +134,7 @@ class DinoVisionTransformer(nn.Module):
             raise NotImplementedError
 
         blocks_list = [
-            block_fn(
+            Block(
                 dim=embed_dim,
                 num_heads=num_heads,
                 mlp_ratio=mlp_ratio,
@@ -242,29 +241,9 @@ class DinoVisionTransformer(nn.Module):
 
         return x
 
-    def forward_features_list(self, x_list, masks_list):
-        x = [self.prepare_tokens_with_masks(x, masks) for x, masks, ar in zip(x_list, masks_list)]
-        for blk in self.blocks:
-            x = blk(x)
-
-        all_x = x
-        output = []
-        for x, masks in zip(all_x, masks_list):
-            x_norm = self.norm(x)
-            output.append(
-                {
-                    "x_norm_clstoken": x_norm[:, 0],
-                    "x_norm_regtokens": x_norm[:, 1 : self.num_register_tokens + 1],
-                    "x_norm_patchtokens": x_norm[:, self.num_register_tokens + 1 :],
-                    "x_prenorm": x,
-                    "masks": masks,
-                }
-            )
-        return output
-
     def forward_features(self, x, masks=None):
         if isinstance(x, list):
-            return self.forward_features_list(x, masks)
+            raise NotImplementedError("forward_features does not support list input")
 
         x = self.prepare_tokens_with_masks(x, masks)
 
@@ -355,7 +334,6 @@ def vit_small(patch_size=16, num_register_tokens=0, **kwargs):
         depth=12,
         num_heads=6,
         mlp_ratio=4,
-        block_fn=partial(Block, attn_class=MemEffAttention),
         num_register_tokens=num_register_tokens,
         **kwargs,
     )
@@ -369,7 +347,6 @@ def vit_base(patch_size=16, num_register_tokens=0, **kwargs):
         depth=12,
         num_heads=12,
         mlp_ratio=4,
-        block_fn=partial(Block, attn_class=MemEffAttention),
         num_register_tokens=num_register_tokens,
         **kwargs,
     )
@@ -383,7 +360,6 @@ def vit_large(patch_size=16, num_register_tokens=0, **kwargs):
         depth=24,
         num_heads=16,
         mlp_ratio=4,
-        block_fn=partial(Block, attn_class=MemEffAttention),
         num_register_tokens=num_register_tokens,
         **kwargs,
     )
@@ -400,7 +376,6 @@ def vit_giant2(patch_size=16, num_register_tokens=0, **kwargs):
         depth=40,
         num_heads=24,
         mlp_ratio=4,
-        block_fn=partial(Block, attn_class=MemEffAttention),
         num_register_tokens=num_register_tokens,
         **kwargs,
     )

@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: #ffffff;
+               font-family: system-ui, -apple-system, "Segoe UI", sans-serif; }
+  canvas { display: block; }
+  #status { position: absolute; left: 0; right: 0; top: 50%; transform: translateY(-50%);
+            text-align: center; color: #555; font-size: 14px; padding: 0 16px; }
+  #hud { position: absolute; left: 8px; bottom: 8px; color: #666; font-size: 11px;
+         background: rgba(255, 255, 255, 0.75); padding: 2px 6px; border-radius: 4px; }
+</style>
+<script type="importmap">
+{"imports": {"three": "__THREE_URL__", "three/addons/controls/OrbitControls.js": "__ORBIT_CONTROLS_URL__"}}
+</script>
+</head>
+<body>
+<div id="status">Loading&hellip;</div>
+<div id="hud"></div>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const CONFIG = /*__CONFIG__*/null;
+const statusEl = document.getElementById('status');
+const hudEl = document.getElementById('hud');
+const setStatus = (text) => { statusEl.textContent = text; statusEl.style.display = text ? 'block' : 'none'; };
+
+async function fetchDepth(url) {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('depth: HTTP ' + response.status);
+    const reader = response.body.getReader();
+    const chunks = [];
+    let received = 0;
+    while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        setStatus('Loading... ' + (received / 1048576).toFixed(1) + ' MB');
+    }
+    const shuffled = new Uint8Array(received);
+    let offset = 0;
+    for (const chunk of chunks) { shuffled.set(chunk, offset); offset += chunk.length; }
+    const count = received >> 2;
+    const bytes = new Uint8Array(received);
+    for (let byte = 0; byte < 4; byte++) {
+        const planeOffset = byte * count;
+        for (let index = 0; index < count; index++) bytes[(index << 2) | byte] = shuffled[planeOffset + index];
+    }
+    return new Float32Array(bytes.buffer);
+}
+
+async function fetchColor(url, width, height) {
+    const response = await fetch(url);
+    if (!response.ok) throw new Error('color: HTTP ' + response.status);
+    const bitmap = await createImageBitmap(await response.blob(),
+        { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const context = canvas.getContext('2d', { willReadFrequently: true });
+    context.drawImage(bitmap, 0, 0);
+    bitmap.close();
+    return context.getImageData(0, 0, width, height).data;
+}
+
+function buildGeometry(depth, rgba) {
+    const { width, height, fx, fy, cx, cy } = CONFIG;
+    let count = 0;
+    for (let index = 0; index < width * height; index++) if (depth[index] > 0) count++;
+    const positions = new Float32Array(count * 3);
+    const colors = new Uint8Array(count * 3);
+    const depths = new Float64Array(count);
+    let pointIndex = 0;
+    let pixelIndex = 0;
+    for (let y = 0; y < height; y++) {
+        const v = (y + 0.5) / height;
+        for (let x = 0; x < width; x++, pixelIndex++) {
+            const pointDepth = depth[pixelIndex];
+            if (!(pointDepth > 0)) continue;
+            positions[pointIndex * 3] = ((x + 0.5) / width - cx) / fx * pointDepth;
+            positions[pointIndex * 3 + 1] = -((v - cy) / fy * pointDepth);
+            positions[pointIndex * 3 + 2] = -pointDepth;
+            colors[pointIndex * 3] = rgba[pixelIndex * 4];
+            colors[pointIndex * 3 + 1] = rgba[pixelIndex * 4 + 1];
+            colors[pointIndex * 3 + 2] = rgba[pixelIndex * 4 + 2];
+            depths[pointIndex] = pointDepth;
+            pointIndex++;
+        }
+    }
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute('aColor', new THREE.BufferAttribute(colors, 3, true));
+    const sortedDepths = Array.from(depths).sort((left, right) => left - right);
+    const median = sortedDepths.length ? sortedDepths[sortedDepths.length >> 1] : 1.0;
+    return { geometry, count, median };
+}
+
+async function main() {
+    const { width, height, fx, fy } = CONFIG;
+    const [depth, rgba] = await Promise.all([
+        fetchDepth(CONFIG.depthUrl),
+        fetchColor(CONFIG.colorUrl, width, height),
+    ]);
+    setStatus('Building point cloud...');
+    await new Promise(requestAnimationFrame);
+    const { geometry, count, median } = buildGeometry(depth, rgba);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setClearColor(0xffffff, 1);
+    document.body.appendChild(renderer.domElement);
+
+    const material = new THREE.ShaderMaterial({
+        uniforms: {
+            uSizeFactor: { value: CONFIG.pointScale / (fx * width) },
+            uHalfHeight: { value: 1.0 },
+        },
+        vertexShader: [
+            'uniform float uSizeFactor;',
+            'uniform float uHalfHeight;',
+            'attribute vec3 aColor;',
+            'varying vec3 vColor;',
+            'void main() {',
+            '  vColor = aColor;',
+            '  vec4 mv = modelViewMatrix * vec4(position, 1.0);',
+            '  gl_Position = projectionMatrix * mv;',
+            '  float worldSize = uSizeFactor * max(-position.z, 1e-4);',
+            '  float px = worldSize * projectionMatrix[1][1] * uHalfHeight / max(-mv.z, 1e-4);',
+            '  gl_PointSize = clamp(px, 1.0, 24.0);',
+            '}',
+        ].join('\n'),
+        fragmentShader: [
+            'varying vec3 vColor;',
+            'void main() { gl_FragColor = vec4(vColor, 1.0); }',
+        ].join('\n'),
+    });
+
+    const scene = new THREE.Scene();
+    scene.add(new THREE.Points(geometry, material));
+    const camera = new THREE.PerspectiveCamera(50, 1, median * 1e-3, median * 1e3);
+    camera.position.set(0, 0, 0);
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.target.set(0, 0, -median);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.15;
+
+    function resize() {
+        const viewportWidth = Math.max(window.innerWidth, 1);
+        const viewportHeight = Math.max(window.innerHeight, 1);
+        renderer.setSize(viewportWidth, viewportHeight);
+        camera.aspect = viewportWidth / viewportHeight;
+        const tanHalfY = 0.5 / fy;
+        const tanHalfX = 0.5 / fx;
+        camera.fov = 2 * Math.atan(Math.max(tanHalfY, tanHalfX / camera.aspect)) * 180 / Math.PI;
+        camera.updateProjectionMatrix();
+        material.uniforms.uHalfHeight.value = renderer.domElement.height * 0.5;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    setStatus('');
+    hudEl.textContent = count.toLocaleString() + ' points - drag to rotate, scroll to zoom';
+    renderer.setAnimationLoop(() => { controls.update(); renderer.render(scene, camera); });
+}
+
+main().catch((error) => { setStatus('Failed to load the 3D view: ' + error.message); });
+</script>
+</body>
+</html>

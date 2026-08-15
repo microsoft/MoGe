@@ -1,36 +1,70 @@
 [build-system]
-requires = ["setuptools>=61.0", "wheel"]
+requires = ["setuptools >= 77.0.3"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "moge"
-version = "2.0.0"
-description = "MoGe: Unlocking Accurate Monocular Geometry Estimation for Open-Domain Images with Optimal Training Supervision"
+version = "3.0.0"
+description = "MoGe-3: Fine-Detail Monocular Geometry Estimation with Self-Guided Sparse Volumetric Refinement"
 readme = "README.md"
-license = {text = "MIT"}
+license = "MIT"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
 dependencies = [
-    "click",
-    "opencv-python",
-    "scipy",
-    "matplotlib",
-    "trimesh",
-    "pillow",
-    "huggingface_hub",
-    "numpy",
-    "torch>=2.0.0",
-    "torchvision",
-    "gradio",
-    "utils3d @ git+https://github.com/EasternJournalist/utils3d.git@3fab839f0be9931dac7c8488eb0e1600c236e183",
-    "pipeline @ git+https://github.com/EasternJournalist/pipeline.git@866f059d2a05cde05e4a52211ec5051fd5f276d6"
+  "click>=8.3.1",
+  "numpy>=2",
+  "opencv-python-headless", # ==4.10.0.84 if any issue with OpenCV
+  "scipy>=1.8",
+  "pillow",
+  "matplotlib",
+  "trimesh>=4.11",
+  "huggingface-hub",
+  "requests",
+  "tqdm",
+  "torch>=2.4",
+  "torchvision>=0.19",
+  "utils3d_moge @ git+https://github.com/EasternJournalist/utils3d-moge.git@62f09d58509485564e24d5d9f6aac9ee9ebc0c37",
+  "pipeline @ git+https://github.com/EasternJournalist/pipeline.git@1c511390d90226c00c101f34b84df26a0f8789b4",
+  "flex-gemm @ git+https://github.com/JeffreyXiang/FlexGEMM.git@b2fadb29d41846c7981ade6801ffc689fae119cf",
+  "gradio>=6.0",
+  "starlette",
 ]
-requires-python = ">=3.9"
 
 [project.urls]
 Homepage = "https://github.com/microsoft/MoGe"
+Repository = "https://github.com/microsoft/MoGe"
+Issues = "https://github.com/microsoft/MoGe/issues"
+
+[project.scripts]
+moge = "moge.scripts.cli:main"
+
+[project.optional-dependencies]
+train = [
+  "accelerate>=1.12.0",
+  "sympy>=1.12",
+  "wandb",
+  "tensorboard>=2.14",
+  "mlflow>=3.1.1",
+]
 
 [tool.setuptools.packages.find]
 where = ["."]
 include = ["moge*"]
 
-[project.scripts]
-moge = "moge.scripts.cli:main"
+[tool.setuptools.package-data]
+"moge.utils.gradio_3d_viewer" = ["viewer.html", "assets/*.js", "assets/LICENSE"]
+
+[tool.uv]
+environments = ["sys_platform == 'linux'", "sys_platform == 'win32'"]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+# To target a different CUDA version, either change the index URL above, 
+# or reinstall into the synced environment with
+# `uv pip install --torch-backend=cu128 torch torchvision --reinstall`.
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130" }]
+torchvision = [{ index = "pytorch-cu130" }]

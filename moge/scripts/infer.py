@@ -16,8 +16,8 @@ import click
 @click.option('--input', '-i', 'input_path', type=click.Path(exists=True), help='Input image or folder path. "jpg" and "png" are supported.')
 @click.option('--fov_x', 'fov_x_', type=float, default=None, help='If camera parameters are known, set the horizontal field of view in degrees. Otherwise, MoGe will estimate it.')
 @click.option('--output', '-o', 'output_path', default='./output', type=click.Path(), help='Output folder path')
-@click.option('--pretrained', 'pretrained_model_name_or_path', type=str, default=None, help='Pretrained model name or path. If not provided, the corresponding default model will be chosen.')
-@click.option('--version', 'model_version', type=click.Choice(['v1', 'v2']), default='v2', help='Model version. Defaults to "v2"')
+@click.option('--pretrained', 'pretrained_model_name_or_path', type=str, default=None, help='Pretrained model name or path. Optional for v1/v2 and required for v3.')
+@click.option('--version', 'model_version', type=click.Choice(['v1', 'v2', 'v3']), default='v3', help='Model version. Defaults to "v3"')
 @click.option('--device', 'device_name', type=str, default='cuda', help='Device name (e.g. "cuda", "cuda:0", "cpu"). Defaults to "cuda"')
 @click.option('--fp16', 'use_fp16', is_flag=True, help='Use fp16 precision for much faster inference.')
 @click.option('--resize', 'resize_to', type=int, default=None, help='Resize the image(s) & output maps to a specific size. Defaults to None (no resizing).')
@@ -27,6 +27,7 @@ Defaults to 9. Note that it is irrelevant to the output size, which is always th
 `resolution_level` actually controls `num_tokens`. See `num_tokens` for more details.')
 @click.option('--num_tokens', type=int, default=None, help='number of tokens used for inference. A integer in the (suggested) range of `[1200, 2500]`. \
 `resolution_level` will be ignored if `num_tokens` is provided. Default: None')
+@click.option('--refine_steps', type=click.IntRange(min=0), default=3, help='Number of sparse refinement steps for v3. Defaults to 3.')
 @click.option('--threshold', type=float, default=0.04, help='Threshold for removing edges. Defaults to 0.01. Smaller value removes more edges. "inf" means no thresholding.')
 @click.option('--maps', 'save_maps_', is_flag=True, help='Whether to save the output maps (image, point map, depth map, normal map, mask) and fov.')
 @click.option('--glb', 'save_glb_', is_flag=True, help='Whether to save the output as a.glb file. The color will be saved as a texture.')
@@ -43,6 +44,7 @@ def main(
     resize_to: int,
     resolution_level: int,
     num_tokens: int,
+    refine_steps: int,
     threshold: float,
     save_maps_: bool,
     save_glb_: bool,
@@ -60,7 +62,10 @@ def main(
     from moge.utils.io import save_glb, save_ply
     from moge.utils.vis import colorize_depth, colorize_normal
     from moge.utils.geometry_numpy import depth_occlusion_edge_numpy
-    import utils3d
+    try:
+        import utils3d_moge as utils3d
+    except ImportError:
+        import utils3d
 
     device = torch.device(device_name)
 
@@ -74,13 +79,15 @@ def main(
         raise FileNotFoundError(f'No image files found in {input_path}')
 
     if pretrained_model_name_or_path is None:
-        DEFAULT_PRETRAINED_MODEL_FOR_EACH_VERSION = {
-            "v1": "Ruicheng/moge-vitl",
-            "v2": "Ruicheng/moge-2-vitl-normal",
+        default_pretrained_models = {
+            'v1': 'Ruicheng/moge-vitl',
+            'v2': 'Ruicheng/moge-2-vitl-normal',
         }
-        pretrained_model_name_or_path = DEFAULT_PRETRAINED_MODEL_FOR_EACH_VERSION[model_version]
+        if model_version == 'v3':
+            raise click.UsageError('MoGe-3 checkpoints are not released to Huggingface yet. Please provide a local path to the checkpoint.')
+        pretrained_model_name_or_path = default_pretrained_models[model_version]
     model = import_model_class_by_version(model_version).from_pretrained(pretrained_model_name_or_path).to(device).eval()
-    if use_fp16:
+    if use_fp16 and model_version != 'v3':
         model.half()
     
     if not any([save_maps_, save_glb_, save_ply_]):
@@ -98,7 +105,15 @@ def main(
         image_tensor = torch.tensor(image / 255, dtype=torch.float32, device=device).permute(2, 0, 1)
 
         # Inference
-        output = model.infer(image_tensor, fov_x=fov_x_, resolution_level=resolution_level, num_tokens=num_tokens, use_fp16=use_fp16)
+        infer_kwargs = {
+            'fov_x': fov_x_,
+            'resolution_level': resolution_level,
+            'num_tokens': num_tokens,
+            'use_fp16': use_fp16,
+        }
+        if model_version == 'v3':
+            infer_kwargs['refine_steps'] = refine_steps
+        output = model.infer(image_tensor, **infer_kwargs)
         points, depth, mask, intrinsics = output['points'].cpu().numpy(), output['depth'].cpu().numpy(), output['mask'].cpu().numpy(), output['intrinsics'].cpu().numpy()
         normal = output['normal'].cpu().numpy() if 'normal' in output else None
 

@@ -1,0 +1,75 @@
+{
+    "NYUv2": {
+        "path": "data/eval/NYUv2",
+        "width": 640,
+        "height": 480,
+        "split": ".index.txt",
+        "depth_unit": 1.0
+    },
+    "KITTI": {
+        "path": "data/eval/KITTI",
+        "width": 750,
+        "height": 375,
+        "split": ".index.txt",
+        "depth_unit": 1.0
+    },
+    "ETH3D": {
+        "path": "data/eval/ETH3D",
+        "width": 2048,
+        "height": 1365,
+        "split": ".index.txt",
+        "segmentation": "segmentation.png",
+        "depth_unit": 1.0
+    },
+    "iBims-1": {
+        "path": "data/eval/iBims-1",
+        "width": 640,
+        "height": 480,
+        "split": ".index.txt",
+        "has_sharp_boundary": true,
+        "segmentation": "segmentation.png",
+        "depth_unit": 1.0
+    },
+    "Sintel": {
+        "path": "data/eval/Sintel",
+        "width": 872,
+        "height": 436,
+        "split": ".index.txt",
+        "has_sharp_boundary": true,
+        "segmentation": "segmentation.png"
+    },
+    "DIODE": {
+        "path": "data/eval/DIODE",
+        "width": 1024,
+        "height": 768,
+        "split": ".index.txt",
+        "segmentation": "segmentation.png",
+        "depth_unit": 1.0
+    },
+    "Spring": {
+        "path": "data/eval/Spring",
+        "width": 1920,
+        "height": 1080,
+        "split": ".index.txt",
+        "has_sharp_boundary": true,
+        "local_mask": "local_mask.png",
+        "local_segmentation": "sam_segmentation.png"
+    },
+    "Synth4K": {
+        "path": "data/eval/Synth4k",
+        "width": 3840,
+        "height": 2160,
+        "split": ".index.txt",
+        "depth_unit": 1.0,
+        "local_mask": "local_mask.png",
+        "local_segmentation": "sam_segmentation.png"
+    },
+    "HAMMER": {
+        "path": "data/eval/HAMMER",
+        "width": 1664,
+        "height": 832,
+        "split": ".index.txt",
+        "depth_unit": 1.0,
+        "has_sharp_boundary": true
+    }
+}
