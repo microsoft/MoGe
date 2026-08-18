@@ -45,9 +45,8 @@ https://github.com/user-attachments/assets/8f9ae680-659d-4f7f-82e2-b9ed9d6b988a
 
 ## ✨ News
 
-***(2026-07-21)***
-* ❗Published **MoGe-3**, featuring significantly improved **fine-grained point map geometry**.
-  * _The new code and pretrained models are coming soon. Please stay tuned!_
+***(2026-08-18)***
+* ❗Released **MoGe-3**, featuring significantly improved **fine-grained point map geometry**.
 
 ## 📦 Installation
 
@@ -154,16 +153,16 @@ Our pretrained models are available on the huggingface hub:
     </tr>
     <tr>
       <td rowspan="2">MoGe-3</td>
-      <td>moge-3-vitg (coming soon)</td>
+      <td><a href="https://huggingface.co/Ruicheng/moge-3-vitg" target="_blank"><code>Ruicheng/moge-3-vitg</code></a></td>
       <td>✅</td>
       <td>✅</td>
-      <td>-</td>
+      <td>1.25B</td>
     </tr>
     <tr>
-      <td>moge-3-vitl (coming soon)</td>
+      <td><a href="https://huggingface.co/Ruicheng/moge-3-vitl" target="_blank"><code>Ruicheng/moge-3-vitl</code></a></td>
       <td>✅</td>
       <td>✅</td>
-      <td>-</td>
+      <td>370M</td>
     </tr>
   </tbody>
 </table>

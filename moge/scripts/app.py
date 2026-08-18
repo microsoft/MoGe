@@ -11,8 +11,6 @@ from typing import *
 import atexit
 from concurrent.futures import ThreadPoolExecutor
 import shutil
-from starlette.middleware import Middleware
-from starlette.middleware.gzip import GZipMiddleware
 import click
 
 
@@ -35,14 +33,16 @@ def main(share: bool, pretrained_model_name_or_path: Optional[str], model_versio
     from PIL import Image
     import gradio as gr
     from moge.utils.gradio_3d_viewer import DepthMap3DViewer
+    from starlette.middleware import Middleware
+    from starlette.middleware.gzip import GZipMiddleware
     try:
         import spaces   # This is for deployment at huggingface.co/spaces
-        HUGGINFACE_SPACES_INSTALLED = True
+        HUGGINGFACE_SPACES_INSTALLED = True
     except ImportError:
-        HUGGINFACE_SPACES_INSTALLED = False
+        HUGGINGFACE_SPACES_INSTALLED = False
 
     import flex_gemm
-    flex_gemm.config.AUTOTUNE_MODE = 'never'
+    flex_gemm.config.AUTOTUNE_MODE = 'never'    # Disable flex_gemm auto-tuning to avoid latency for the first inference on GPU. 
 
     try:
         import utils3d_moge as utils3d
@@ -59,10 +59,8 @@ def main(share: bool, pretrained_model_name_or_path: Optional[str], model_versio
         default_pretrained_models = {
             'v1': 'Ruicheng/moge-vitl',
             'v2': 'Ruicheng/moge-2-vitl-normal',
-            'v3': 'TODO'
+            'v3': 'Ruicheng/moge-3-vitl'
         }
-        if model_version == 'v3':
-            raise click.UsageError('--pretrained is required when --version is v3.')
         pretrained_model_name_or_path = default_pretrained_models[model_version]
     model = import_model_class_by_version(model_version).from_pretrained(pretrained_model_name_or_path).cuda().eval()
     thread_pool_executor = ThreadPoolExecutor(max_workers=1)
@@ -81,7 +79,7 @@ def main(share: bool, pretrained_model_name_or_path: Optional[str], model_versio
         atexit.register(_delete)
 
     # Inference on GPU. 
-    @(spaces.GPU if HUGGINFACE_SPACES_INSTALLED else lambda x: x)
+    @(spaces.GPU if HUGGINGFACE_SPACES_INSTALLED else lambda x: x)
     def run_with_gpu(image: np.ndarray, resolution_level: int, apply_mask: bool, refine_steps: int) -> Dict[str, np.ndarray]:
         image_tensor = torch.tensor(image, dtype=torch.float32, device=torch.device('cuda')).permute(2, 0, 1) / 255
         infer_kwargs = {
