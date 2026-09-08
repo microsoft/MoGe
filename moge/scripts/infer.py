@@ -20,6 +20,8 @@ import click
 @click.option('--version', 'model_version', type=click.Choice(['v1', 'v2', 'v3']), default='v3', help='Model version. Defaults to "v3"')
 @click.option('--device', 'device_name', type=str, default='cuda', help='Device name (e.g. "cuda", "cuda:0", "cpu"). Defaults to "cuda"')
 @click.option('--fp16', 'use_fp16', is_flag=True, help='Use fp16 precision for much faster inference.')
+@click.option('--bf16', 'use_bf16', is_flag=True, help='Run the ViT encoder in bf16 (weights and compute) and keep the neck, heads and refiner in fp32, \
+i.e. the training-time mixed precision policy. Roughly halves the weight memory. v2/v3 only, requires a CUDA GPU with native bf16 support (Ampere or newer).')
 @click.option('--resize', 'resize_to', type=int, default=None, help='Resize the image(s) & output maps to a specific size. Defaults to None (no resizing).')
 @click.option('--resolution_level', type=int, default=9, help='An integer [0-9] for the resolution level for inference. \
 Higher value means more tokens and the finer details will be captured, but inference can be slower. \
@@ -41,6 +43,7 @@ def main(
     model_version: str,
     device_name: str,
     use_fp16: bool,
+    use_bf16: bool,
     resize_to: int,
     resolution_level: int,
     num_tokens: int,
@@ -86,9 +89,15 @@ def main(
         if model_version == 'v3':
             raise click.UsageError('MoGe-3 checkpoints are not released to Huggingface yet. Please provide a local path to the checkpoint.')
         pretrained_model_name_or_path = default_pretrained_models[model_version]
+    if use_bf16 and model_version == 'v1':
+        raise click.UsageError('--bf16 is only supported for v2 and v3.')
+    if use_bf16 and use_fp16:
+        raise click.UsageError('--bf16 and --fp16 are mutually exclusive.')
     model = import_model_class_by_version(model_version).from_pretrained(pretrained_model_name_or_path).to(device).eval()
     if use_fp16 and model_version != 'v3':
         model.half()
+    if use_bf16:
+        model.enable_mixed_precision(torch.bfloat16, cast_encoder_weights=True)
     
     if not any([save_maps_, save_glb_, save_ply_]):
         warnings.warn('No output format specified. Defaults to saving all. Please use "--maps", "--glb", or "--ply" to specify the output.')

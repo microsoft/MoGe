@@ -69,7 +69,10 @@ class MoGeModel(nn.Module):
 
     @property
     def dtype(self) -> torch.dtype:
-        return next(self.parameters()).dtype
+        # The dtype inputs are expected in. Taken from the neck rather than the first parameter, because under
+        # `enable_mixed_precision(..., cast_encoder_weights=True)` the encoder is stored in reduced precision while
+        # the neck and heads (and therefore the inputs and outputs) stay in fp32.
+        return next(self.neck.parameters()).dtype
     
     @property
     def onnx_compatible_mode(self) -> bool:
@@ -138,13 +141,21 @@ class MoGeModel(nn.Module):
             if hasattr(self, head):
                 getattr(self, head).enable_gradient_checkpointing()
 
-    def enable_mixed_precision(self, dtype: torch.dtype = torch.bfloat16):
+    def enable_mixed_precision(self, dtype: torch.dtype = torch.bfloat16, cast_encoder_weights: bool = False):
         """Enable fine-grained mixed precision: run the encoder in `dtype`, keep the neck and heads in fp32.
 
         Calling this repeatedly replaces the previous wrapping rather than stacking it.
+
+        If `cast_encoder_weights` is True, the encoder weights are also stored in `dtype`. Autocast casts them
+        to `dtype` on the fly anyway, caching the copies for the duration of the forward pass, so this does not
+        change the precision of the matmuls but roughly halves the encoder's weight memory and avoids holding
+        the weights twice. Intended for inference.
         """
         for handle in getattr(self, '_autocast_handles', []):
             handle.remove()
+
+        if cast_encoder_weights:
+            self.encoder.to(dtype)
 
         module_dtype_map = [
             (self.encoder, dtype),
