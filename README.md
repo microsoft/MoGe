@@ -265,6 +265,12 @@ Options:
   --device TEXT               Device name (e.g. "cuda", "cuda:0", "cpu").
                               Defaults to "cuda"
   --fp16                      Use fp16 precision for much faster inference.
+  --bf16                      Run the ViT encoder in bf16 (weights and
+                              compute) and keep the neck, heads and refiner in
+                              fp32, i.e. the training-time mixed precision
+                              policy. Roughly halves the weight memory. v2/v3
+                              only, requires a CUDA GPU with native bf16
+                              support (Ampere or newer).
   --resize INTEGER            Resize the image(s) & output maps to a specific
                               size. Defaults to None (no resizing).
   --resolution_level INTEGER  An integer [0-9] for the resolution level for
