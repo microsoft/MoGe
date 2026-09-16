@@ -21,6 +21,7 @@ import click
 @click.option('--resolution_level', type=int, default=9, help='An integer [0-9] for the resolution level of inference. The higher, the better but slower. Defaults to 9. Note that it is irrelevant to the output resolution.')
 @click.option('--threshold', type=float, default=0.03, help='Threshold for removing edges. Defaults to 0.03. Smaller value removes more edges. "inf" means no thresholding.')
 @click.option('--batch_size', type=int, default=4, help='Batch size for inference. Defaults to 4.')
+@click.option('--gpu_merge', is_flag=True, help='Solve the panorama depth merge on GPU instead of CPU.')
 @click.option('--splitted', 'save_splitted', is_flag=True, help='Whether to save the splitted images. Defaults to False.')
 @click.option('--maps', 'save_maps_', is_flag=True, help='Whether to save the output maps and fov(image, depth, mask, points, fov).')
 @click.option('--glb', 'save_glb_', is_flag=True, help='Whether to save the output as a.glb file. The color will be saved as a texture.')
@@ -35,6 +36,7 @@ def main(
     resolution_level: int,
     threshold: float,
     batch_size: int,
+    gpu_merge: bool,
     save_splitted: bool,
     save_maps_: bool,
     save_glb_: bool,
@@ -118,7 +120,11 @@ def main(
         print('Merging...') if pbar.disable else pbar.set_postfix_str(f'Merging')
 
         merging_width, merging_height = min(1920, width), min(960, height)
-        panorama_depth, panorama_mask = merge_panorama_depth(merging_width, merging_height, splitted_distance_maps, splitted_masks, splitted_extrinsics, splitted_intriniscs)
+        panorama_depth, panorama_mask = merge_panorama_depth(
+            merging_width, merging_height, splitted_distance_maps, splitted_masks,
+            splitted_extrinsics, splitted_intriniscs,
+            device=device_name if gpu_merge else None,
+        )
         panorama_depth = panorama_depth.astype(np.float32)
         panorama_depth = cv2.resize(panorama_depth, (width, height), cv2.INTER_LINEAR)
         panorama_mask = cv2.resize(panorama_mask.astype(np.uint8), (width, height), cv2.INTER_NEAREST) > 0
