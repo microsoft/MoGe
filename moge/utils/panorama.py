@@ -105,9 +105,81 @@ def grad_equation(width: int, height: int, wrap_x: bool = False, wrap_y: bool = 
     return A
 
 
-def merge_panorama_depth(width: int, height: int, distance_maps: List[np.ndarray], pred_masks: List[np.ndarray], extrinsics: List[np.ndarray], intrinsics: List[np.ndarray]):
+def _solve_gpu(A, b, device, iters: int = 100, tol: float = 1e-5, x0: Optional[np.ndarray] = None) -> np.ndarray:
+    import torch
+
+    if isinstance(device, str):
+        device = torch.device(device)
+
+    A_csr = A.tocsr()
+    A_csr.sort_indices()
+    AT_csr = A.T.tocsr()
+    AT_csr.sort_indices()
+
+    idx_dtype = torch.int32 if A_csr.nnz < (2**31 - 1) else torch.int64
+
+    A_t = torch.sparse_csr_tensor(
+        torch.as_tensor(A_csr.indptr, dtype=idx_dtype, device=device),
+        torch.as_tensor(A_csr.indices, dtype=idx_dtype, device=device),
+        torch.as_tensor(A_csr.data, dtype=torch.float32, device=device),
+        size=A_csr.shape,
+        device=device,
+    )
+    AT_t = torch.sparse_csr_tensor(
+        torch.as_tensor(AT_csr.indptr, dtype=idx_dtype, device=device),
+        torch.as_tensor(AT_csr.indices, dtype=idx_dtype, device=device),
+        torch.as_tensor(AT_csr.data, dtype=torch.float32, device=device),
+        size=AT_csr.shape,
+        device=device,
+    )
+    b_t = torch.as_tensor(b, dtype=torch.float32, device=device)
+
+    def spmm(mat, vec):
+        return torch.sparse.mm(mat, vec.unsqueeze(1)).squeeze(1)
+
+    if x0 is not None:
+        x = torch.as_tensor(x0, dtype=torch.float32, device=device)
+        e = b_t - spmm(A_t, x)
+    else:
+        x = torch.zeros(A.shape[1], dtype=torch.float32, device=device)
+        e = b_t
+
+    r = spmm(AT_t, e)
+    p = r.clone()
+    rs_old = torch.dot(r, r)
+
+    if torch.sqrt(rs_old) < tol:
+        return x.cpu().numpy()
+
+    for _ in range(iters):
+        q = spmm(A_t, p)
+        pq = torch.dot(q, q)
+        if pq < 1e-12:
+            break
+        alpha = rs_old / pq
+        x += alpha * p
+        e -= alpha * q
+        r = spmm(AT_t, e)
+        rs_new = torch.dot(r, r)
+        if torch.sqrt(rs_new) < tol:
+            break
+        p = r + (rs_new / rs_old) * p
+        rs_old = rs_new
+
+    return x.cpu().numpy()
+
+
+def merge_panorama_depth(
+    width: int, 
+    height: int, 
+    distance_maps: List[np.ndarray], 
+    pred_masks: List[np.ndarray], 
+    extrinsics: List[np.ndarray], 
+    intrinsics: List[np.ndarray],
+    device: Optional[Union[str, Any]] = None,
+):
     if max(width, height) > 256:
-        panorama_depth_init, _ = merge_panorama_depth(width // 2, height // 2, distance_maps, pred_masks, extrinsics, intrinsics)
+        panorama_depth_init, _ = merge_panorama_depth(width // 2, height // 2, distance_maps, pred_masks, extrinsics, intrinsics, device=device)
         panorama_depth_init = cv2.resize(panorama_depth_init, (width, height), cv2.INTER_LINEAR)
     else:
         panorama_depth_init = None
@@ -180,12 +252,16 @@ def merge_panorama_depth(width: int, height: int, distance_maps: List[np.ndarray
         panorama_log_distance_grad_y.reshape(-1)[grad_y_mask],
         panorama_laplacian_map.reshape(-1)[laplacian_mask]
     ])
-    x, *_ = lsmr(
-        A, b, 
-        atol=1e-5, btol=1e-5,
-        x0=np.log(panorama_depth_init).reshape(-1) if panorama_depth_init is not None else None, 
-        show=False,
-    )
+    x0 = np.log(panorama_depth_init).reshape(-1) if panorama_depth_init is not None else None
+    if device is None:
+        x, *_ = lsmr(
+            A, b, 
+            atol=1e-5, btol=1e-5,
+            x0=x0, 
+            show=False,
+        )
+    else:
+        x = _solve_gpu(A, b, device=device, x0=x0)
     
     panorama_depth = np.exp(x).reshape(height, width).astype(np.float32)
     panorama_mask = np.any(panorama_pred_masks, axis=0)
