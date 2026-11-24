@@ -1,4 +1,5 @@
 from typing import Literal, Tuple
+import functools
 import math
 
 import torch
@@ -23,8 +24,38 @@ def _pick_spconv_algorithm(in_channels: int, out_channels: int) -> str:
     return "implicit_gemm"
 
 
+@functools.lru_cache(maxsize=None)
+def _triton_dot_uses_tensor_cores(device: torch.device) -> bool:
+    """Whether Triton's `tl.dot` runs on tensor cores on this CUDA device.
+
+    Triton >= 3.3 lowers `tl.dot` to scalar FMA below compute capability 8.0
+    (triton-lang/triton#5066), so FlexGEMM's Triton implicit-GEMM kernels lose
+    tensor cores on pre-Ampere GPUs such as T4 and V100.
+    """
+    return torch.cuda.get_device_capability(device) >= (8, 0)
+
+
+class _SubmanifoldConv3d(SubmanifoldConv3d):
+    """`SubmanifoldConv3d` that switches to FlexGEMM's `explicit_gemm` on pre-Ampere GPUs.
+
+    `explicit_gemm` gathers the neighbours and calls `torch.mm`, so the matmul runs in
+    cuBLAS (tensor cores for fp16 on Volta/Turing). The choice is made per call from the
+    input's device, so a model moved between GPUs picks the right path on each.
+    """
+
+    def __init__(self, *args, algorithm: str, **kwargs):
+        super().__init__(*args, algorithm=algorithm, **kwargs)
+        self._tensor_core_algorithm = algorithm
+
+    def forward(self, feats, coords, shape, neighbor_cache=None):
+        if feats.is_cuda:
+            fast = _triton_dot_uses_tensor_cores(feats.device)
+            self.algorithm = self._tensor_core_algorithm if fast else "explicit_gemm"
+        return super().forward(feats, coords, shape, neighbor_cache)
+
+
 def make_conv3d(in_channels: int, out_channels: int, kernel_size: int = 3) -> SubmanifoldConv3d:
-    return SubmanifoldConv3d(
+    return _SubmanifoldConv3d(
         in_channels, out_channels, kernel_size,
         algorithm=_pick_spconv_algorithm(in_channels, out_channels),
     )
